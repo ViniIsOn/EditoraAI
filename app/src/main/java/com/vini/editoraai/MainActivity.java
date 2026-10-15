@@ -6,6 +6,8 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Movie;
+import android.graphics.drawable.Drawable;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -58,6 +60,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_VIDEO = 71;
     private static final int REQ_MUSIC = 72;
     private static final int REQ_FONT = 73;
+    private static final int REQ_ANALYST = 74;
     private static final int BG = Color.rgb(9, 15, 29);
     private static final int PANEL = Color.rgb(20, 30, 49);
     private static final int CYAN = Color.rgb(44, 216, 221);
@@ -402,6 +405,21 @@ public final class MainActivity extends Activity {
         Uri uri = data.getData();
         try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
         catch (SecurityException ignored) { }
+        if (requestCode == REQ_ANALYST) {
+            videoUri=uri;
+            try { getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION); }
+            catch(SecurityException ignored){}
+            durationMs=0;trimStartMs=0;trimEndMs=0;
+            captions.clear();updateCaptionsLabel();
+            shownMedia=null;
+            activeMedia=MediaCueStore.load(this,uri);
+            player.setMediaItem(MediaItem.fromUri(uri));
+            player.prepare();player.play();
+            fileLabel.setText("Vídeo da nuvem: "+displayName(uri));
+            saveProject();
+            info("Vídeo da nuvem escolhido. Ajuste o corte, gere legendas e exporte quando quiser.");
+            return;
+        }
         if (requestCode == REQ_FONT) { importUserFont(uri); return; }
         if (requestCode == REQ_VIDEO) {
             videoUri = uri;
@@ -710,7 +728,7 @@ public final class MainActivity extends Activity {
         intent.putExtra("video",videoUri.toString());
         intent.putExtra("duration",durationMs);
         intent.putExtra("position",player==null?0L:player.getCurrentPosition());
-        startActivity(intent);
+        startActivityForResult(intent,REQ_ANALYST);
     }
     @Override protected void onResume(){
         super.onResume();
@@ -722,12 +740,32 @@ public final class MainActivity extends Activity {
         MediaCue cue=null;
         for(MediaCue item:activeMedia)if(item.isImage()&&item.contains(currentMs)){cue=item;break;}
         if(shownMedia!=cue){
+            Drawable previous=mediaImage.getDrawable();
+            if(previous instanceof GifSupport.DrawableGif)
+                ((GifSupport.DrawableGif)previous).stop();
             shownMedia=cue;
             if(cue==null){
                 mediaImage.setVisibility(View.GONE);mediaImage.setImageDrawable(null);
             }else{
-                mediaImage.setImageURI(Uri.parse(cue.uri));
+                Uri input=Uri.parse(cue.uri);
                 mediaImage.setVisibility(View.VISIBLE);
+                if(GifSupport.isGif(this,input)){
+                    mediaImage.setImageDrawable(null);
+                    final MediaCue expected=cue;
+                    work.execute(()->{
+                        try{
+                            Movie gif=GifSupport.load(getApplicationContext(),input);
+                            handler.post(()->{
+                                if(mediaImage!=null && shownMedia==expected)
+                                    mediaImage.setImageDrawable(new GifSupport.DrawableGif(gif));
+                            });
+                        }catch(Exception ex){handler.post(()->{
+                            if(shownMedia==expected)mediaImage.setImageDrawable(null);
+                        });}
+                    });
+                }else{
+                    mediaImage.setImageURI(input);
+                }
             }
         }
         if(cue!=null){
