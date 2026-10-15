@@ -5,6 +5,9 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import java.net.URLEncoder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -27,7 +30,7 @@ import java.util.concurrent.Executors;
 
 /** Área do analista: sugere cenas a partir de legendas e insere mídias aprovadas. */
 public final class AnalystActivity extends Activity {
-    private static final int REQ_IMAGE=300,REQ_SOUND=301;
+    private static final int REQ_IMAGE=300,REQ_SOUND=301,REQ_GOOGLE=302;
     private static final int BG=Color.rgb(9,15,29),PANEL=Color.rgb(22,34,53);
     private static final int CYAN=Color.rgb(51,219,223),WHITE=Color.rgb(232,241,250);
     private final Handler main=new Handler(Looper.getMainLooper());
@@ -90,8 +93,15 @@ public final class AnalystActivity extends Activity {
         space(root);
         root.addView(button("← Voltar ao editor",this::finish));
         root.addView(button("✦ Analisar transcrição e sugerir cenas",this::analyze));
-        root.addView(button("🌐 Buscar imagens com licença no Wikimedia Commons",()->
+        root.addView(button("🌐 Buscar imagens abertas no Wikimedia Commons",()->
                 askSearch("",requestedStartMs,"image")));
+        root.addView(button("🔎 Pesquisar no Google Imagens",this::googleImageSearch));
+        root.addView(button("🔗 Inserir imagem pelo link HTTPS",this::inputImageUrl));
+        root.addView(button("☁ Google Fotos • escolher sem criar pack",()->pickFromGoogle("image/*")));
+        root.addView(button("☁ Google Drive • imagem ou GIF na nuvem",()->pickCloudDocument("image/*")));
+        root.addView(button("🎞 Pesquisar vídeos no YouTube",()->youtubeSearch("")));
+        root.addView(button("▶ Guardar link de um vídeo do YouTube",this::youtubeLinkDialog));
+        root.addView(button("🎬 Escolher vídeo meu no Drive / Fotos",()->pickFromGoogle("video/*")));
         root.addView(button("🖼 Importar minha imagem",()->pickImage(requestedStartMs,"image")));
         root.addView(button("😆 Importar meu meme PNG / JPG / GIF",()->pickImage(requestedStartMs,"meme")));
         root.addView(button("🔊 Inserir efeito sonoro original",this::chooseSound));
@@ -105,8 +115,114 @@ public final class AnalystActivity extends Activity {
         space(root);
         root.addView(text("MÍDIAS NA LINHA DO TEMPO",16,WHITE));
         list=vertical();root.addView(list);
-        root.addView(text("A busca usa Wikimedia Commons e exibe a licença. Para prints de jogos, use imagens próprias ou que você tenha autorização para reutilizar. A inclusão nunca é automática sem aprovação.",12,CYAN));
+        root.addView(text("YouTube: links são para assistir e consultar, NÃO entram no MP4. Para exportar clipes use seus arquivos de vídeo ou material autorizado pelo titular. Google Fotos/Drive: o Android busca apenas o item escolhido; não são baixados packs. O arquivo na nuvem pode precisar de conexão ao exportar.",12,CYAN));
     }
+
+    private void googleImageSearch() {
+        EditText query=new EditText(this);
+        query.setSingleLine(true);
+        query.setHint("Ex.: Sonic Rumble ou meme original");
+        new AlertDialog.Builder(this).setTitle("Pesquisar no Google Imagens")
+            .setMessage("A busca abre o navegador. Depois você pode selecionar uma imagem do Drive/Fotos ou colar um link direto de imagem HTTPS. Confira os direitos de uso.")
+            .setView(query).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Abrir Google",(d,w)->{
+                try{
+                    String term=URLEncoder.encode(query.getText().toString().trim(),"UTF-8");
+                    startActivity(new Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.google.com/search?tbm=isch&q="+term)));
+                }catch(Exception ex){message("Navegador indisponível.");}
+            }).show();
+    }
+    private void pickFromGoogle(String mime) {
+        requestedEndMs=end(requestedStartMs,3500);
+        requestedKind="image";
+        Intent intent=new Intent(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mime);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(Intent.createChooser(intent,"Google Fotos, Drive ou Galeria"),REQ_GOOGLE);
+    }
+    private void pickCloudDocument(String mime) {
+        requestedEndMs=end(requestedStartMs,3500);
+        requestedKind="image";
+        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mime);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent,REQ_GOOGLE);
+    }
+    private void youtubeSearch(String initial) {
+        EditText input=new EditText(this);
+        input.setText(initial);input.setHint("Pesquisar vídeos no YouTube");
+        new AlertDialog.Builder(this).setTitle("Pesquisar YouTube")
+            .setMessage("Pesquise no YouTube e copie o link do vídeo. Você pode salvá-lo aqui como referência, sem baixar o vídeo.")
+            .setView(input).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Pesquisar",(d,w)->{
+                try {
+                    String q=URLEncoder.encode(input.getText().toString().trim(),"UTF-8");
+                    startActivity(new Intent(Intent.ACTION_VIEW,
+                        Uri.parse("https://www.youtube.com/results?search_query="+q)));
+                }catch(Exception e){message("Não foi possível abrir YouTube.");}
+            }).show();
+    }
+    private String youtubeId(String raw) {
+        try {
+            Uri uri=Uri.parse(raw.trim());
+            String host=uri.getHost();
+            if(host==null)return null;
+            host=host.toLowerCase(Locale.ROOT);
+            String id=null;
+            if(host.equals("youtu.be")||host.equals("www.youtu.be"))
+                id=uri.getLastPathSegment();
+            else if(host.equals("youtube.com")||host.equals("www.youtube.com")||
+                    host.equals("m.youtube.com")||host.equals("youtube-nocookie.com")||
+                    host.equals("www.youtube-nocookie.com")){
+                List<String> parts=uri.getPathSegments();
+                if(parts.contains("watch"))id=uri.getQueryParameter("v");
+                else if(parts.size()>=2 &&
+                        (parts.get(0).equals("shorts")||parts.get(0).equals("embed")||
+                         parts.get(0).equals("live"))) id=parts.get(1);
+            }
+            if(id!=null&&id.matches("[A-Za-z0-9_-]{11}"))return id;
+        }catch(Exception ignored){}
+        return null;
+    }
+    private void youtubeLinkDialog() {
+        EditText input=new EditText(this);
+        input.setHint("https://www.youtube.com/watch?v=...");
+        new AlertDialog.Builder(this).setTitle("Selecionar vídeo no YouTube")
+            .setMessage("Cole um link compartilhado pelo YouTube. O vídeo será salvo como referência para assistir no player; não será copiado nem renderizado no MP4.")
+            .setView(input).setNegativeButton("Cancelar",null)
+            .setPositiveButton("Guardar referência",(d,w)->{
+                String id=youtubeId(input.getText().toString());
+                if(id==null){message("Link do YouTube inválido. Cole a URL completa de um vídeo.");return;}
+                saveCue(new MediaCue("youtube","https://www.youtube.com/watch?v="+id,
+                    "Vídeo YouTube • "+id,"Referência externa; não exportada","",
+                    requestedStartMs,end(requestedStartMs,3500),0));
+            }).show();
+    }
+    private void openYoutube(String raw) {
+        String id=youtubeId(raw);
+        if(id==null){message("Link do vídeo não é válido.");return;}
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW,
+                Uri.parse("https://www.youtube.com/watch?v="+id)));
+        }catch(Exception ex){message("Não foi possível abrir o YouTube.");}
+    }
+    private void youtubePreview(String raw) {
+        String id=youtubeId(raw);
+        if(id==null){message("Link inválido.");return;}
+        WebView player=new WebView(this);
+        player.getSettings().setJavaScriptEnabled(true);
+        player.setWebViewClient(new WebViewClient());
+        player.loadUrl("https://www.youtube-nocookie.com/embed/"+id+"?playsinline=1");
+        new AlertDialog.Builder(this).setTitle("YouTube • visualização (não exporta)")
+            .setView(player)
+            .setPositiveButton("Abrir no YouTube",(d,w)->{
+                player.destroy();openYoutube(raw);
+            }).setNegativeButton("Fechar",(d,w)->player.destroy()).show();
+    }
+
     private void analyze(){
         if(captions.isEmpty()){
             new AlertDialog.Builder(this).setTitle("Nenhuma fala transcrita")
@@ -119,6 +235,7 @@ public final class AnalystActivity extends Activity {
             ideas.addView(text(clock(idea.startMs)+" • "+idea.query,14,WHITE));
             ideas.addView(text(idea.why,12,CYAN));
             ideas.addView(button("🌐 Buscar imagem deste tema",()->askSearch(idea.query,idea.startMs,"image")));
+            ideas.addView(button("▶ Pesquisar vídeos deste tema no YouTube",()->youtubeSearch(idea.query)));
             ideas.addView(button("🖼 Usar imagem minha neste ponto",()->pickImage(idea.startMs,"image")));
             space(ideas);
         }
@@ -157,6 +274,21 @@ public final class AnalystActivity extends Activity {
         Uri uri=data.getData();
         try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}
         catch(SecurityException ignored){}
+        if(request==REQ_GOOGLE) {
+            String contentType=getContentResolver().getType(uri);
+            if(contentType!=null&&contentType.startsWith("video/")){
+                // Vídeo da nuvem pode ser usado como vídeo PRINCIPAL no editor.
+                // Não o substituímos silenciosamente, para preservar seu projeto.
+                message("Vídeo escolhido na nuvem. Volte ao editor e importe este vídeo pela seção ARQUIVOS para usá-lo como principal.");
+                new AlertDialog.Builder(this).setTitle("Vídeo na nuvem selecionado")
+                    .setMessage("Para usar este vídeo como material principal, abra-o na seção Arquivos do editor. Não importamos vídeos do YouTube para o MP4.")
+                    .setPositiveButton("Entendi",null).show();
+            }else{
+                saveCue(new MediaCue(requestedKind,uri.toString(),name(uri),"Minha mídia na nuvem","",
+                        requestedStartMs,requestedEndMs,1));
+            }
+            return;
+        }
         if(request==REQ_IMAGE){
             saveCue(new MediaCue(requestedKind,uri.toString(),name(uri),"Minha mídia","",
                     requestedStartMs,requestedEndMs,1));
@@ -241,6 +373,10 @@ public final class AnalystActivity extends Activity {
         for(MediaCue cue:new ArrayList<>(media)){
             list.addView(text(clock(cue.startMs)+" – "+clock(cue.endMs)+"  • "+cue.kind+
                     "\n"+cue.label,13,WHITE));
+            if("youtube".equals(cue.kind)){
+                list.addView(button("▶ Assistir no YouTube (não é exportado)",()->openYoutube(cue.uri)));
+                list.addView(button("📺 Ver no player incorporado",()->youtubePreview(cue.uri)));
+            }
             if(cue.isImage()){
                 ImageView image=new ImageView(this);
                 image.setImageURI(Uri.parse(cue.uri));
