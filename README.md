@@ -1,3 +1,37 @@
+# EditoraAI v0.2.1 TESTE — correção da legenda offline
+
+Esta versão de diagnóstico corrige o fluxo de legendagem que podia parecer parado após baixar o modelo Vosk PT-BR. **O aplicativo de teste é instalado ao lado do EditoraAI anterior** (identificador `com.vini.editoraai.teste`) para não obrigar o usuário a desinstalar a versão antiga.
+
+## Melhorias
+
+- Progresso de download e transcrição visível ao lado do botão de legendas (não somente no fim da tela).
+- Avisos de erro claros em diálogo e status persistente se o reconhecimento falhar.
+- Resultados Vosk que contêm texto mas não timestamps não são mais ignorados: o texto passa a receber tempos aproximados e pode ser revisado manualmente.
+- Depois de criar legendas, a prévia salta para o primeiro trecho e inicia a reprodução.
+- Botão **▶ Ver legendas na prévia**.
+- O contador deixa claro se há ou não legendas salvas.
+- O modelo offline continua sendo baixado somente mediante autorização.
+- O modo Groq opcional e o editor/exportador 9:16 foram mantidos.
+
+## Teste recomendado
+
+1. Instale o novo APK de teste. O EditoraAI v0.2 antigo fica instalado.
+2. Importe um vídeo **curto, de 10 a 20 segundos, com alguém falando claramente**.
+3. Toque em **✦ Gerar legendas SEM INTERNET**. Autorize o modelo no primeiro uso do app TESTE; ele não compartilha os arquivos internos com o app antigo.
+4. Aguarde o progresso de reconhecimento chegar a 100% e o contador exibir a quantidade de legendas.
+5. Se aparecer **0 legendas**, anote a mensagem completa da seção; se aparecer um número maior, toque em ▶ Ver legendas na prévia.
+6. Revise o texto em Editar legendas antes de exportar MP4.
+
+A transcrição offline usa Vosk e pode cometer erros, especialmente com música alta e vozes distantes. Não é necessário Groq. O APK compilar não garante que todas as entradas de áudio sejam reconhecidas em todos os dispositivos; testar com um vídeo curto permite confirmar o funcionamento no aparelho.
+
+## Compilação
+
+JDK 17, Android SDK 35, Gradle 8.10.2. GitHub Actions publica o artefato `EditoraAI-v0.2.1-TESTE-APK`.
+
+## Notas
+
+O modo debug de teste tem applicationId `com.vini.editoraai.teste`; a versão release continua com `com.vini.editoraai`. O APK de teste não substitui automaticamente o anterior nem transporta dados do app antigo. O modo Groq segue condicionado aos termos do provedor; para menores é necessária a participação de um responsável.
+
 # EditoraAI 🎬 — Editor de vídeo Android para Kwai
 
 Versão v0.2.0 com legendas offline e ícone próprio: projeto Android nativo em **Java + Media3**, sem anúncios, voltado para Shorts, Reels e Kwai.

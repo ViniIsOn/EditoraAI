@@ -69,8 +69,8 @@ public final class MainActivity extends Activity {
     private long durationMs = 0, trimStartMs = 0, trimEndMs = 0;
     private boolean busy = false;
     private SeekBar startSeek, endSeek;
-    private TextView trimLabel, captionsLabel, previewCaption, fileLabel, musicLabel, status;
-    private ProgressBar progress;
+    private TextView trimLabel, captionsLabel, captionsStatus, previewCaption, fileLabel, musicLabel, status;
+    private ProgressBar progress, captionProgress;
     private Button exportBtn, cancelBtn, shareBtn;
 
     @Override public void onCreate(Bundle savedInstanceState) {
@@ -204,12 +204,24 @@ public final class MainActivity extends Activity {
         gap(captionsBox, 8);
         captionsBox.addView(action("Usar Groq/Whisper (opcional)", false, this::requestTranscription));
         gap(captionsBox, 8);
+        captionsBox.addView(action("▶ Ver legendas na prévia", false, this::previewFirstCaption));
+        gap(captionsBox, 8);
         captionsBox.addView(action("Editar legendas", false, this::openCaptionEditor));
         gap(captionsBox, 8);
         captionsBox.addView(action("+ Adicionar legenda manual", false, this::addManualCaption));
         captionsLabel = label("0 legendas", 12, MUTED, false);
         captionsLabel.setPadding(0, dp(11), 0, 0);
         captionsBox.addView(captionsLabel);
+        captionProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        captionProgress.setMax(100);
+        captionProgress.setVisibility(View.GONE);
+        LinearLayout.LayoutParams captionProgressLayout = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(7));
+        captionProgressLayout.topMargin = dp(12);
+        captionsBox.addView(captionProgress, captionProgressLayout);
+        captionsStatus = label("Importe um vídeo e toque em gerar legendas. O status vai aparecer aqui.", 13, CYAN, false);
+        captionsStatus.setPadding(0, dp(12), 0, 0);
+        captionsBox.addView(captionsStatus);
         gap(root, 13);
 
         LinearLayout exportBox = panel(root);
@@ -232,7 +244,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.2  •  Projeto Android nativo  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.2.1 TESTE  •  Legendas com diagnóstico  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -292,46 +304,83 @@ public final class MainActivity extends Activity {
         if (busy) return;
         final Uri requestedVideo = videoUri;
         setBusy(true);
-        if (installFirst) {
-            progress.setVisibility(View.VISIBLE);
-            progress.setProgress(0);
-            cancelBtn.setVisibility(View.GONE); // o cancelamento mostrado pertence ao exportador
-            info("Preparando o modelo PT-BR...");
-        } else info("Lendo o áudio do seu vídeo no próprio celular...");
+        captionProgress.setVisibility(View.VISIBLE);
+        captionProgress.setIndeterminate(installFirst);
+        captionProgress.setProgress(0);
+        captionStatus("Modelo instalado. Agora vou reconhecer a fala; vídeos longos podem demorar.");
+        if (installFirst) captionStatus("Baixando o modelo. Espere o download E a transcrição terminarem.");
+        else captionStatus("Lendo e reconhecendo o áudio no próprio celular...");
         work.execute(() -> {
             try {
                 if (installFirst) OfflineModelManager.install(getApplicationContext(), (stage, percent) ->
                         handler.post(() -> {
                             if (isFinishing() || isDestroyed()) return;
-                            progress.setProgress(percent);
-                            info(stage + (percent > 0 ? " • " + percent + "%" : ""));
+                            captionProgress.setIndeterminate(false);
+                            captionProgress.setProgress(percent);
+                            captionStatus(stage + (percent > 0 ? " • " + percent + "%" : ""));
                         }));
                 handler.post(() -> {
-                    progress.setVisibility(View.GONE);
-                    info("IA offline reconhecendo sua fala... Aguarde.");
+                    captionProgress.setIndeterminate(false);
+                    captionProgress.setProgress(0);
+                    captionStatus("Download concluído. Agora analisando a voz do vídeo (espere até 100%)...");
                 });
                 List<Caption> found = OfflineTranscriber.transcribe(getApplicationContext(), requestedVideo, percent -> {
-                    if (percent % 10 == 0) handler.post(() -> info("Reconhecendo fala offline: " + percent + "%"));
+                    if (percent % 5 == 0) handler.post(() -> {
+                        captionProgress.setProgress(percent);
+                        captionStatus("Reconhecendo áudio: " + percent + "% (ainda não terminou).");
+                    });
                 });
                 handler.post(() -> {
                     // Se foi escolhido outro vídeo, não sobrescrever suas legendas.
+                    captionProgress.setVisibility(View.GONE);
                     if (!requestedVideo.equals(videoUri)) {
-                        setBusy(false); info("O vídeo mudou; legendas antigas preservadas."); return;
+                        setBusy(false);
+                        captionStatus("Você escolheu outro vídeo. As legendas existentes foram preservadas.");
+                        return;
                     }
                     if (found.isEmpty()) {
                         setBusy(false);
-                        info("Não encontrei fala reconhecível. Tente um áudio mais claro ou use legendas manuais.");
+                        captionStatus("0 legendas: nenhum trecho de fala foi reconhecido.");
+                        new AlertDialog.Builder(this).setTitle("Nenhuma legenda encontrada")
+                                .setMessage("O modelo terminou, mas não reconheceu palavras. Verifique se o vídeo tem voz audível, sem música muito alta. Você pode usar outro vídeo ou adicionar legendas manualmente.")
+                                .setPositiveButton("Entendi", null).show();
                         return;
                     }
                     captions.clear(); captions.addAll(found);
                     sortCaptions(); updateCaptionsLabel(); saveProject(); setBusy(false);
-                    info("Pronto! " + found.size() + " legendas criadas SEM API. Revise o texto antes de exportar.");
+                    previewFirstCaption();
+                    captionStatus("✅ " + found.size() + " LEGENDAS CRIADAS! A prévia começou no primeiro trecho. Revise em Editar legendas antes de exportar.");
                 });
             } catch (Exception ex) {
                 String message = ex.getMessage() == null ? ex.toString() : ex.getMessage();
-                handler.post(() -> { setBusy(false); progress.setVisibility(View.GONE); error("Legendas offline: " + message); });
+                handler.post(() -> {
+                    setBusy(false);
+                    captionProgress.setVisibility(View.GONE);
+                    captionStatus("Não foi possível legendar: " + message);
+                    new AlertDialog.Builder(this).setTitle("Falha nas legendas offline")
+                            .setMessage(message + "\n\nTente um vídeo curto (10–20 segundos) em que sua fala esteja clara. O modelo baixado continua instalado.")
+                            .setPositiveButton("OK", null).show();
+                });
             }
         });
+    }
+
+    private void captionStatus(String message) {
+        if (captionsStatus != null) captionsStatus.setText(message);
+        if (status != null) status.setText(message);
+    }
+
+    private void previewFirstCaption() {
+        if (captions.isEmpty() || player == null) {
+            captionStatus("Ainda não existem legendas. Primeiro gere ou adicione uma legenda.");
+            return;
+        }
+        Caption first = captions.get(0);
+        long targetMs = Math.min(Math.max(trimStartMs, first.startMs + 120),
+                trimEndMs > 0 ? Math.max(trimStartMs, trimEndMs - 100) : Long.MAX_VALUE);
+        player.seekTo(targetMs);
+        previewCaption.setText(first.text);
+        player.play();
     }
 
     private void requestTranscription() {
@@ -447,7 +496,11 @@ public final class MainActivity extends Activity {
         return Math.round(Double.parseDouble(field.getText().toString().trim().replace(',', '.')) * 1000);
     }
     private void sortCaptions() { Collections.sort(captions, Comparator.comparingLong(c -> c.startMs)); }
-    private void updateCaptionsLabel() { captionsLabel.setText(captions.size() + " legendas • toque em Editar para revisar as palavras e tempos"); }
+    private void updateCaptionsLabel() {
+        captionsLabel.setText(captions.isEmpty()
+                ? "0 legendas geradas — nada será exibido no vídeo ainda."
+                : "✅ " + captions.size() + " legendas salvas — toque em ▶ Ver legendas na prévia ou em Editar.");
+    }
 
     private void startExport() {
         if (!ensureVideo() || busy) return;

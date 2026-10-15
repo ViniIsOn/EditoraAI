@@ -31,14 +31,14 @@ public final class OfflineTranscriber {
             recognizer.setWords(true);
             ArrayList<Caption> output = new ArrayList<>();
             CaptionWords words = new CaptionWords(output);
-            decodeAudio(context, videoUri, recognizer, words, progress);
-            words.accept(recognizer.getFinalResult());
+            long decodedMs = decodeAudio(context, videoUri, recognizer, words, progress);
+            words.accept(recognizer.getFinalResult(), decodedMs);
             words.flush();
             return output;
         }
     }
 
-    private static void decodeAudio(Context context, Uri uri, Recognizer recognizer,
+    private static long decodeAudio(Context context, Uri uri, Recognizer recognizer,
                                     CaptionWords words, Progress progress) throws Exception {
         MediaExtractor extractor = new MediaExtractor();
         MediaCodec decoder = null;
@@ -109,6 +109,7 @@ public final class OfflineTranscriber {
             if (pcm == null) throw new IOException("Não foi possível decodificar o áudio.");
             pcm.finish();
             progress.report(100);
+            return pcm.getTotalMs();
         } finally {
             try { if (decoder != null) decoder.stop(); } catch (Exception ignored) { }
             if (decoder != null) decoder.release();
@@ -128,6 +129,7 @@ public final class OfflineTranscriber {
         long phase = 0;
         double sum = 0;
         int count = 0;
+        long outputSamples = 0;
 
         ResampledPcm(MediaFormat format, Recognizer recognizer, CaptionWords captions) throws IOException {
             channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
@@ -156,6 +158,7 @@ public final class OfflineTranscriber {
                     short sample = (short) Math.max(-32768, Math.min(32767, Math.round(32767.0 * sum / Math.max(1, count))));
                     samples[pos++] = (byte) (sample & 0xff);
                     samples[pos++] = (byte) ((sample >>> 8) & 0xff);
+                    outputSamples++;
                     if (pos >= samples.length) flushSamples();
                     phase -= rate;
                     sum = 0;
@@ -163,10 +166,12 @@ public final class OfflineTranscriber {
                 }
             }
         }
+        long getTotalMs() { return outputSamples * 1000L / OUT_RATE; }
         void finish() throws Exception { flushSamples(); }
         void flushSamples() throws Exception {
             if (pos == 0) return;
-            if (recognizer.acceptWaveForm(samples, pos)) captions.accept(recognizer.getResult());
+            if (recognizer.acceptWaveForm(samples, pos))
+                captions.accept(recognizer.getResult(), getTotalMs());
             pos = 0;
         }
     }
@@ -177,17 +182,19 @@ public final class OfflineTranscriber {
         final StringBuilder text = new StringBuilder();
         long start = -1, end = 0;
         int words = 0;
+        long lastResultMs = 0;
         CaptionWords(List<Caption> captions) { this.captions = captions; }
 
-        void accept(String raw) throws Exception {
+        void accept(String raw, long audioEndMs) throws Exception {
             JSONObject result = new JSONObject(raw);
             JSONArray arr = result.optJSONArray("result");
-            if (arr == null) return;
-            for (int i = 0; i < arr.length(); i++) {
+            boolean hasTimestamps = false;
+            for (int i = 0; arr != null && i < arr.length(); i++) {
                 JSONObject item = arr.optJSONObject(i);
                 if (item == null) continue;
                 String word = item.optString("word", "").trim();
                 if (word.isEmpty()) continue;
+                hasTimestamps = true;
                 long from = Math.round(item.optDouble("start", 0) * 1000);
                 long to = Math.max(from + 120, Math.round(item.optDouble("end", from / 1000.0 + 0.3) * 1000));
                 if (start >= 0 && (from - end > 650 || words >= 7 || to - start >= 3600)) flush();
@@ -197,6 +204,35 @@ public final class OfflineTranscriber {
                 words++;
                 end = to;
             }
+            // Alguns resultados Vosk contêm apenas "text", sem lista "result".
+            // Nesses casos não devemos descartar a transcrição inteira.
+            if (!hasTimestamps) {
+                String fallback = result.optString("text", "").trim();
+                if (!fallback.isEmpty()) {
+                    flush();
+                    String[] tokens = fallback.split("\\s+");
+                    int parts = Math.max(1, (tokens.length + 6) / 7);
+                    long fromMs = Math.max(0, lastResultMs);
+                    long untilMs = Math.max(audioEndMs, fromMs + parts * 450L);
+                    for (int segment = 0; segment < parts; segment++) {
+                        int lo = segment * 7;
+                        int hi = Math.min(tokens.length, lo + 7);
+                        StringBuilder phrase = new StringBuilder();
+                        for (int k = lo; k < hi; k++) {
+                            if (phrase.length() > 0) phrase.append(' ');
+                            phrase.append(tokens[k]);
+                        }
+                        String caption = phrase.toString().trim();
+                        if (!caption.isEmpty()) {
+                            caption = Character.toUpperCase(caption.charAt(0)) + caption.substring(1);
+                            long a = fromMs + (untilMs - fromMs) * segment / parts;
+                            long b = fromMs + (untilMs - fromMs) * (segment + 1) / parts;
+                            captions.add(new Caption(a, Math.max(a + 300, b), caption));
+                        }
+                    }
+                }
+            }
+            lastResultMs = Math.max(lastResultMs, audioEndMs);
         }
         void flush() {
             if (text.length() > 0 && start >= 0) {
