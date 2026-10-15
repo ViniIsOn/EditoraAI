@@ -8,7 +8,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Movie;
 import android.graphics.Rect;
-import android.graphics.BitmapFactory;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.RectF;
@@ -57,6 +56,7 @@ public final class MediaCueOverlay extends BitmapOverlay {
                         options.inJustDecodeBounds=false;
                         Bitmap bitmap=BitmapFactory.decodeStream(stream2,null,options);
                         if(bitmap!=null)images.put(cue.uri,bitmap);
+                    }
                     }
                     }
                 }catch(Exception ignored){}
