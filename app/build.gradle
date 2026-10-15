@@ -8,15 +8,15 @@ android {
         applicationId 'com.vini.editoraai'
         minSdk 26
         targetSdk 35
-        versionCode 9
-        versionName '0.5.0'
+        versionCode 10
+        versionName '0.6.0'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes {
         debug {
             // Instala ao lado da v0.2; não exige desinstalar nem perder dados da anterior.
-            applicationIdSuffix '.analista'
-            manifestPlaceholders = [appLabel: 'EditoraAI ANALISTA']
+            applicationIdSuffix '.nuvem'
+            manifestPlaceholders = [appLabel: 'EditoraAI NUVEM']
         }
         release {
             minifyEnabled false

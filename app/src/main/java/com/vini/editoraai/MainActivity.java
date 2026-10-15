@@ -388,7 +388,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.5 ANALISTA  •  Vídeos verticais com cenas e SFX  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.6 NUVEM  •  GIFs + Google + YouTube  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
