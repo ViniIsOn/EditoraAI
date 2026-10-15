@@ -110,16 +110,17 @@ public final class VideoExporter {
                 &&cue.startMs<endMs)ordered.add(cue);
         if(ordered.isEmpty())return null;
         Collections.sort(ordered,Comparator.comparingLong(c->c.startMs));
-        ArrayList<EditedMediaItem> pieces=new ArrayList<>();
+        EditedMediaItemSequence.Builder soundTrack=new EditedMediaItemSequence.Builder();
+        // Necessário quando o primeiro trecho da faixa é um silêncio.
+        soundTrack.experimentalSetForceAudioTrack(true);
+        int itemCount=0;
         long cursorMs=0L;
         for(MediaCue cue:ordered){
             long relativeStart=Math.max(0,Math.max(startMs,cue.startMs)-startMs);
             if(relativeStart<cursorMs)continue; // never shift or double-play overlaps
             long gapMs=relativeStart-cursorMs;
             if(gapMs>0){
-                pieces.add(new EditedMediaItem.Builder(
-                    new MediaItem.Builder().setMediaId(EditedMediaItem.GAP_MEDIA_ID).build())
-                    .setDurationUs(gapMs*1000L).build());
+                soundTrack.addGap(gapMs*1000L);
             }
             Uri source;
             int soundLength;
@@ -136,11 +137,12 @@ public final class VideoExporter {
             MediaItem sound=new MediaItem.Builder().setUri(source)
                     .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
                             .setEndPositionMs(soundLength).build()).build();
-            pieces.add(new EditedMediaItem.Builder(sound).build());
+            soundTrack.addItem(new EditedMediaItem.Builder(sound).build());
+            itemCount++;
             cursorMs=relativeStart+soundLength;
         }
-        if(pieces.isEmpty())return null;
-        return EditedMediaItemSequence.withAudioFrom(pieces);
+        if(itemCount==0)return null;
+        return soundTrack.build();
     }
 
     public int progress() {
