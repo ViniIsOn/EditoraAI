@@ -37,7 +37,7 @@ public final class VideoExporter {
     private File output;
 
     public void start(Context context, Uri videoUri, Uri musicUri, long startMs, long endMs,
-                      List<Caption> captions, int style, int animation, Listener callback) {
+                      List<Caption> captions, int style, int animation, int font, int size, int position, Listener callback) {
         output = new File(context.getCacheDir(), "editora_export_" + System.currentTimeMillis() + ".mp4");
         if (output.exists()) output.delete();
 
@@ -51,7 +51,7 @@ public final class VideoExporter {
         videoEffects.add(Presentation.createForWidthAndHeight(720, 1280,
                 Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
         if (!captions.isEmpty()) {
-            List<TextureOverlay> overlays = Collections.singletonList(new CaptionOverlay(captions, startMs, style, animation));
+            List<TextureOverlay> overlays = Collections.singletonList(new CaptionOverlay(captions, startMs, style, animation, font, size, position));
             videoEffects.add(new OverlayEffect(overlays));
         }
         EditedMediaItem editedVideo = new EditedMediaItem.Builder(video)

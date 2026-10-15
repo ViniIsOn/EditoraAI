@@ -23,6 +23,6 @@ jobs:
       - name: Publicar APK para baixar
         uses: actions/upload-artifact@v4
         with:
-          name: EditoraAI-v0.3.0-ESTUDIO-APK
+          name: EditoraAI-v0.4.0-TIPOGRAFIA-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

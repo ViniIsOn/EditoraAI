@@ -1,30 +1,29 @@
-# EditoraAI v0.3 ESTÚDIO — legendas e timeline
+# EditoraAI v0.4 • ESTÚDIO DE TIPOGRAFIA
 
-Atualização incremental baseada na **v0.2.2 REPARO**, mantendo a validação corrigida do modelo Vosk de português brasileiro (arquivos legados v1 ou v2). Ainda usa Java nativo, Media3 e Vosk, sem API obrigatória.
+Mais opções de fontes e animações para legendas verticais de vídeos curtos, mantendo o reconhecimento offline Vosk corrigido, corte, música, prévia, edição de texto e exportação 9:16 MP4.
 
-## Novidades v0.3
-- Quatro estilos de legenda no menu: Clássico branco, Neon ciano, Destaque amarelo e Clean em cartão branco.
-- Efeitos de entrada na legenda: Sem animação, Pop (escala) ou Fade (opacidade), aplicados no vídeo exportado.
-- Prévia de legendas com as mesmas cores e efeitos de entrada (aproximada à exportação).
-- Linha do tempo principal com SeekBar, relógio e avanço manual (seek).
-- Faixa de trechos de legenda tocáveis; um toque leva a reprodução ao instante correspondente.
-- Preferências de estilo e animação salvas no projeto.
-- Exportação MP4 9:16 (720×1280) mantém corte, áudio, música e legendas.
+### Fontes (12 opções)
 
-## Nota sobre os efeitos
-Os efeitos **animam a entrada de cada frase** nos primeiros ~190 ms. Não há efeitos de partículas, máscara de vídeo nem marcação palavra por palavra nesta versão. A exportação usa quadros com transparência calculados pelo tempo; a prévia é uma representação usando TextView, podendo apresentar pequenas diferenças em relação ao MP4 final.
+Impacto Black, Moderna Sans, Condensada Bold, Rounded, Serif, Mono, Casual, Cursive, Light, Medium, Serif Bold e Small Caps. Utiliza fontes já presentes no Android, sem downloads externos. A aparência exata pode variar conforme o fabricante do aparelho, caso uma família não esteja disponível.
 
-## Teste Android
-Para evitar desinstalar a v0.2.2 REPARO, a build debug chama-se **EditoraAI ESTÚDIO** e tem package id `com.vini.editoraai.estudio`. Ela fica lado a lado com os outros APKs de teste e usa armazenamento próprio (o download Vosk pode precisar ser repetido). A build release conserva `com.vini.editoraai`, mas não há promessa de atualização direta de builds assinados por chaves de debug distintas.
+### Animações (12 opções)
 
-1. Importe um vídeo com fala de 10–20 segundos.
-2. Gere legendas offline e confira a contagem.
-3. Selecione Neon ciano e animação Pop.
-4. Toque em algum dos trechos na faixa de legendas e veja a prévia.
-5. Exporte 9:16 e confira as legendas no arquivo MP4 salvo.
+Sem animação, Pop elástico, Fade, Subir, Esquerda, Direita, Bounce, Zoom, Girar, Digitação, Pulse e Cair de cima. Efeitos animados na prévia e na exportação; a transição da prévia é uma aproximação do resultado renderizado no MP4. **Não são efeitos oficiais nem recursos do CapCut**.
 
-## Compilação
-O workflow GitHub Actions executa `gradle :app:assembleDebug` com JDK 17 / Gradle 8.10.2 / Android SDK. O APK é publicado como `EditoraAI-v0.3.0-ESTUDIO-APK`.
+### Aparência
 
-## Segurança e privacidade
-No modo offline a voz fica no aparelho; o modelo PT-BR é baixado mediante consentimento. A integração online Groq continua opcional e sujeita aos termos do serviço. O app não possui anúncios.
+Oito visuais: Clássico, Neon, Destaque amarelo, Clean, Glow rosa, Cinema, Black pill e Sunset. Tamanho entre 70 e 145% e posição inferior, central ou superior. Configurações salvas no projeto local do próprio app.
+
+### Instalação e privacidade
+
+A v0.4 é **EditoraAI TIPOGRAFIA**, pacote de teste `com.vini.editoraai.tipografia`. Instala-se lado a lado com a v0.3 ESTÚDIO e a v0.2.2 REPARO, pois os APKs GitHub Actions debug podem ter assinaturas diferentes. Isso protege seus projetos antigos, mas exige importar o vídeo e baixar o modelo de idioma novamente nesta versão. A build release mantém o applicationId original `com.vini.editoraai`.
+
+O app trabalha offline após obter o modelo Vosk no primeiro uso. A Groq é opcional e sujeita aos termos do fornecedor; não coloque API keys no GitHub.
+
+### Teste manual
+
+Importe vídeo de 10s, gere legendas, escolha fonte Impacto ou Cursive, animação Zoom/Digitação e cor Sunset, ajuste o tamanho, visualize as legendas, exporte MP4 e confira se a animação ficou no vídeo. Compile confirmado pelo GitHub Actions, mas só um teste real no celular confirma renderização e performance.
+
+### Limitações
+
+Ainda não possui importação de arquivos de fontes externas nem animação palavra-por-palavra ou tracking automático de sílabas; o Digitação anima cada trecho de legenda progressivamente. Não há linha do tempo multiclipes nem efeitos oficiais da marca CapCut.

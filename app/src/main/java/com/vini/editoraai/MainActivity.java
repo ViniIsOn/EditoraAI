@@ -71,10 +71,12 @@ public final class MainActivity extends Activity {
     private long durationMs = 0, trimStartMs = 0, trimEndMs = 0;
     private boolean busy = false;
     private SeekBar startSeek, endSeek, timelineSeek;
-    private int captionStyle = 0, captionAnimation = 0;
+    private int captionStyle = 0, captionAnimation = 0, captionFont = 0, captionSize = 100, captionPosition = 0;
     private boolean timelineTouch = false;
     private LinearLayout captionChips;
-    private Spinner styleSpinner, animationSpinner;
+    private Spinner styleSpinner, animationSpinner, fontSpinner, positionSpinner;
+    private SeekBar fontSizeSlider;
+    private TextView fontSizeLabel;
     private TextView timelineLabel;
     private TextView trimLabel, captionsLabel, captionsStatus, previewCaption, fileLabel, musicLabel, status;
     private ProgressBar progress, captionProgress;
@@ -106,9 +108,10 @@ public final class MainActivity extends Activity {
                     long t = player.getCurrentPosition();
                     Caption active = null;
                     for (Caption c : captions) if (c.contains(t)) { active = c; break; }
-                    previewCaption.setText(active == null ? "" : active.text);
+                    long age = active == null ? 0 : Math.max(0, t - active.startMs);
+                    previewCaption.setText(active == null ? "" : CaptionStyle.shownText(active.text, captionAnimation, age));
                     CaptionStyle.preview(previewCaption, captionStyle, captionAnimation,
-                            active == null ? 0 : Math.max(0, t - active.startMs), active != null);
+                            captionFont, captionSize, captionPosition, age, active != null);
                     if (timelineSeek != null && durationMs > 0 && !timelineTouch) {
                         timelineSeek.setProgress((int)Math.min(timelineSeek.getMax(), t / 100));
                         timelineLabel.setText(clock(t) + " / " + clock(durationMs));
@@ -269,6 +272,48 @@ public final class MainActivity extends Activity {
             }
             @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
         });
+        gap(captionsBox, 12);
+        captionsBox.addView(label("FONTE • 12 OPÇÕES", 12, CYAN, true));
+        fontSpinner = new Spinner(this);
+        ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CaptionStyle.FONTS);
+        fontSpinner.setAdapter(fontAdapter);
+        captionsBox.addView(fontSpinner);
+        fontSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int index, long id) {
+                captionFont = CaptionStyle.safeFont(index);
+                saveProject();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
+        gap(captionsBox, 11);
+        fontSizeLabel = label("TAMANHO DA FONTE • 100%", 12, CYAN, true);
+        captionsBox.addView(fontSizeLabel);
+        fontSizeSlider = new SeekBar(this);
+        fontSizeSlider.setMax(75);
+        fontSizeSlider.setProgress(captionSize - 70);
+        fontSizeSlider.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));
+        captionsBox.addView(fontSizeSlider);
+        fontSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser){
+                if(!fromUser)return;
+                captionSize=CaptionStyle.safeSize(70+value);
+                fontSizeLabel.setText("TAMANHO DA FONTE • " + captionSize + "%");
+            }
+            @Override public void onStartTrackingTouch(SeekBar b) { }
+            @Override public void onStopTrackingTouch(SeekBar b) { saveProject(); }
+        });
+        gap(captionsBox, 10);
+        captionsBox.addView(label("POSIÇÃO DAS LEGENDAS", 12, CYAN, true));
+        positionSpinner = new Spinner(this);
+        ArrayAdapter<String> positions = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CaptionStyle.POSITIONS);
+        positionSpinner.setAdapter(positions);
+        captionsBox.addView(positionSpinner);
+        positionSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            @Override public void onItemSelected(android.widget.AdapterView<?> p,View v,int index,long id){
+                captionPosition=CaptionStyle.safePosition(index);saveProject();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p){}
+        });
         gap(captionsBox, 9);
         captionsBox.addView(label("TRECHOS NA LINHA DO TEMPO", 12, CYAN, true));
         android.widget.HorizontalScrollView chipScroll = new android.widget.HorizontalScrollView(this);
@@ -312,7 +357,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.3 ESTÚDIO  •  Estilos e animações  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.4 TIPOGRAFIA  •  12 fontes + 12 efeitos  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -362,7 +407,7 @@ public final class MainActivity extends Activity {
         }
         new AlertDialog.Builder(this)
                 .setTitle("Baixar o modelo de português?")
-                .setMessage("A versão 0.2.2 corrigiu a compatibilidade com o modelo oficial de português do Vosk. Ela precisa baixar e conferir o modelo uma vez (~31 MB). Recomendamos Wi-Fi; depois você poderá legendar sem internet, sem chave de API. Deseja continuar?")
+                .setMessage("Baixe o modelo oficial de português do Vosk na primeira vez (~31 MB). Depois você poderá legendar sem internet ou chave de API. Recomendamos Wi-Fi. Deseja continuar?")
                 .setNegativeButton("Agora não", null)
                 .setPositiveButton("Baixar e legendar", (dialog, which) -> transcribeOffline(true))
                 .show();
@@ -599,7 +644,7 @@ public final class MainActivity extends Activity {
         info("Preparando renderização com áudio e legendas...");
         try {
             exporter.start(getApplicationContext(), videoUri, musicUri, trimStartMs, trimEndMs,
-                    new ArrayList<>(captions), captionStyle, captionAnimation, new VideoExporter.Listener() {
+                    new ArrayList<>(captions), captionStyle, captionAnimation, captionFont, captionSize, captionPosition, new VideoExporter.Listener() {
                         @Override public void success(File mp4) {
                             info("Finalizando o MP4 na galeria...");
                             work.execute(() -> {
@@ -697,6 +742,8 @@ public final class MainActivity extends Activity {
         e.putString("music", musicUri == null ? "" : musicUri.toString());
         e.putLong("start", trimStartMs); e.putLong("end", trimEndMs);
         e.putInt("caption_style", captionStyle); e.putInt("caption_animation", captionAnimation);
+        e.putInt("caption_font", captionFont); e.putInt("caption_size", captionSize);
+        e.putInt("caption_position", captionPosition);
         JSONArray arr = new JSONArray(); for (Caption c : captions) arr.put(c.toJson());
         e.putString("captions", arr.toString()); e.apply();
     }
@@ -705,8 +752,15 @@ public final class MainActivity extends Activity {
         try {
             captionStyle = CaptionStyle.safeStyle(p.getInt("caption_style", 0));
             captionAnimation = CaptionStyle.safeAnimation(p.getInt("caption_animation", 0));
+            captionFont = CaptionStyle.safeFont(p.getInt("caption_font", 0));
+            captionSize = CaptionStyle.safeSize(p.getInt("caption_size", 100));
+            captionPosition = CaptionStyle.safePosition(p.getInt("caption_position", 0));
             if (styleSpinner != null) styleSpinner.setSelection(captionStyle);
             if (animationSpinner != null) animationSpinner.setSelection(captionAnimation);
+            if (fontSpinner != null) fontSpinner.setSelection(captionFont);
+            if (positionSpinner != null) positionSpinner.setSelection(captionPosition);
+            if (fontSizeSlider != null) fontSizeSlider.setProgress(captionSize - 70);
+            if (fontSizeLabel != null) fontSizeLabel.setText("TAMANHO DA FONTE • " + captionSize + "%");
             String v = p.getString("video", "");
             if (!v.isEmpty()) {
                 videoUri = Uri.parse(v); trimStartMs = p.getLong("start", 0); trimEndMs = p.getLong("end", 0);
