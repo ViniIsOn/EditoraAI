@@ -25,6 +25,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
+import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -67,6 +68,9 @@ public final class MainActivity extends Activity {
     private final ExecutorService work = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<Caption> captions = new ArrayList<>();
+    private List<MediaCue> activeMedia=new ArrayList<>();
+    private MediaCue shownMedia;
+    private ImageView mediaImage;
     private final VideoExporter exporter = new VideoExporter();
     private ExoPlayer player;
     private Uri videoUri, musicUri, completedUri;
@@ -113,6 +117,7 @@ public final class MainActivity extends Activity {
                     for (Caption c : captions) if (c.contains(t)) { active = c; break; }
                     long age = active == null ? 0 : Math.max(0, t - active.startMs);
                     previewCaption.setText(active == null ? "" : CaptionStyle.shownText(active.text, captionAnimation, age));
+                    updateMediaImage(t);
                     CaptionStyle.preview(previewCaption, captionStyle, captionAnimation,
                             captionFont, captionSize, captionPosition, age, active != null);
                     if (timelineSeek != null && durationMs > 0 && !timelineTouch) {
@@ -157,6 +162,13 @@ public final class MainActivity extends Activity {
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);
         playerView.setUseController(true);
         previewFrame.addView(playerView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mediaImage = new ImageView(this);
+        mediaImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        mediaImage.setBackgroundColor(Color.argb(150,8,18,34));
+        FrameLayout.LayoutParams mediaParams=new FrameLayout.LayoutParams(-1,dp(222),Gravity.TOP);
+        mediaParams.leftMargin=dp(18);mediaParams.rightMargin=dp(18);mediaParams.topMargin=dp(50);
+        mediaImage.setVisibility(View.GONE);
+        previewFrame.addView(mediaImage,mediaParams);
         previewCaption = label("", 21, Color.WHITE, true);
         previewCaption.setGravity(Gravity.CENTER);
         previewCaption.setShadowLayer(5f, 2f, 2f, Color.BLACK);
@@ -347,8 +359,14 @@ public final class MainActivity extends Activity {
         captionsBox.addView(captionsStatus);
         gap(root, 13);
 
+        LinearLayout analystSection = panel(root);
+        title(analystSection, "04  ANALISTA DE IMAGENS, MEMES E SONS");
+        analystSection.addView(label("Use as legendas para encontrar momentos do vídeo, pesquisar fotos com licença no Commons e inserir imagens, memes e efeitos sonoros com sua aprovação.",13,MUTED,false));
+        gap(analystSection,9);
+        analystSection.addView(action("✦ ABRIR ANALISTA DE MÍDIA",true,this::openAnalyst));
+        gap(root,13);
         LinearLayout exportBox = panel(root);
-        title(exportBox, "04  FINALIZAR");
+        title(exportBox, "05  FINALIZAR");
         exportBox.addView(label("Vídeo vertical com legendas gravadas na imagem. A qualidade depende dos codecs do aparelho.", 13, MUTED, false));
         gap(exportBox, 11);
         exportBtn = action("EXPORTAR VÍDEO 9:16", true, this::startExport);
@@ -367,7 +385,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.4.1 TIPOGRAFIA  •  12 fontes + 12 efeitos  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.5 ANALISTA  •  Vídeos verticais com cenas e SFX  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -389,6 +407,9 @@ public final class MainActivity extends Activity {
             videoUri = uri;
             durationMs = 0; trimStartMs = 0; trimEndMs = 0;
             captions.clear(); updateCaptionsLabel();
+            shownMedia=null;
+            activeMedia=MediaCueStore.load(this,videoUri);
+            if(mediaImage!=null)mediaImage.setVisibility(View.GONE);
             player.setMediaItem(MediaItem.fromUri(videoUri));
             player.prepare();
             player.play();
@@ -680,6 +701,43 @@ public final class MainActivity extends Activity {
                 : "✅ " + captions.size() + " legendas salvas — toque em ▶ Ver legendas na prévia ou em Editar.");
     }
 
+
+    private void openAnalyst(){
+        if(!ensureVideo())return;
+        saveProject();
+        if(player!=null)player.pause();
+        Intent intent=new Intent(this,AnalystActivity.class);
+        intent.putExtra("video",videoUri.toString());
+        intent.putExtra("duration",durationMs);
+        intent.putExtra("position",player==null?0L:player.getCurrentPosition());
+        startActivity(intent);
+    }
+    @Override protected void onResume(){
+        super.onResume();
+        if(videoUri!=null)activeMedia=MediaCueStore.load(this,videoUri);
+        shownMedia=null;
+    }
+    private void updateMediaImage(long currentMs){
+        if(mediaImage==null)return;
+        MediaCue cue=null;
+        for(MediaCue item:activeMedia)if(item.isImage()&&item.contains(currentMs)){cue=item;break;}
+        if(shownMedia!=cue){
+            shownMedia=cue;
+            if(cue==null){
+                mediaImage.setVisibility(View.GONE);mediaImage.setImageDrawable(null);
+            }else{
+                mediaImage.setImageURI(Uri.parse(cue.uri));
+                mediaImage.setVisibility(View.VISIBLE);
+            }
+        }
+        if(cue!=null){
+            long elapsed=Math.max(0,currentMs-cue.startMs),remaining=Math.max(0,cue.endMs-currentMs);
+            float alpha=Math.max(0,Math.min(1f,Math.min(elapsed/180f,remaining/180f)));
+            float scale=cue.effect==1?0.84f+0.16f*Math.min(1f,elapsed/240f):1f;
+            mediaImage.setAlpha(alpha);mediaImage.setScaleX(scale);mediaImage.setScaleY(scale);
+        }
+    }
+
     private void startExport() {
         if (!ensureVideo() || busy) return;
         if (trimEndMs <= trimStartMs) { error("Selecione um intervalo de vídeo válido."); return; }
@@ -690,7 +748,8 @@ public final class MainActivity extends Activity {
         info("Preparando renderização com áudio e legendas...");
         try {
             exporter.start(getApplicationContext(), videoUri, musicUri, trimStartMs, trimEndMs,
-                    new ArrayList<>(captions), captionStyle, captionAnimation, captionFont, captionSize, captionPosition, new VideoExporter.Listener() {
+                    new ArrayList<>(captions), new ArrayList<>(MediaCueStore.load(this,videoUri)),
+                    captionStyle, captionAnimation, captionFont, captionSize, captionPosition, new VideoExporter.Listener() {
                         @Override public void success(File mp4) {
                             info("Finalizando o MP4 na galeria...");
                             work.execute(() -> {
