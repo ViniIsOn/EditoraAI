@@ -308,10 +308,10 @@ public final class AnalystActivity extends Activity {
                 new AlertDialog.Builder(this).setTitle("Usar vídeo da nuvem no editor?")
                     .setMessage("Isso troca o vídeo principal (e limpa as legendas da gravação anterior). O Android pode precisar buscar os dados do vídeo na nuvem durante a exportação. Links de vídeos do YouTube continuam apenas como referências.")
                     .setPositiveButton("Usar este vídeo",(d,w)->{
-                        Intent result=new Intent();
-                        result.setData(uri);
-                        result.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                        setResult(RESULT_OK,result);
+                        Intent returnData=new Intent();
+                        returnData.setData(uri);
+                        returnData.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        setResult(RESULT_OK,returnData);
                         finish();
                     })
                     .setNegativeButton("Cancelar",null).show();
