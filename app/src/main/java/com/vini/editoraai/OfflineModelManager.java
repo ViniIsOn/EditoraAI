@@ -26,9 +26,31 @@ public final class OfflineModelManager {
 
     public static File modelDir(Context context) { return new File(context.getFilesDir(), NAME); }
     public static boolean isInstalled(Context context) { return valid(modelDir(context)); }
+    /**
+     * Vosk aceita dois formatos de modelo:
+     * - v1/legado: arquivos diretamente na raiz (português small-pt-0.3);
+     * - v2: pastas am/, conf/ e graph/.
+     *
+     * O app anterior validava somente v2/HCLG.fst, rejeitando incorretamente
+     * o modelo oficial português v1, que usa final.mdl + mfcc.conf na raiz
+     * e o par HCLr.fst/Gr.fst. O próprio construtor nativo Vosk suporta v1.
+     */
     private static boolean valid(File d) {
-        return new File(d, "am/final.mdl").isFile() && new File(d, "conf/model.conf").isFile()
-                && new File(d, "graph/HCLG.fst").isFile();
+        boolean legacy = nonEmpty(d, "final.mdl")
+                && nonEmpty(d, "mfcc.conf")
+                && (nonEmpty(d, "HCLG.fst")
+                    || (nonEmpty(d, "HCLr.fst") && nonEmpty(d, "Gr.fst")));
+        boolean current = nonEmpty(d, "am/final.mdl")
+                && nonEmpty(d, "conf/model.conf")
+                && nonEmpty(d, "conf/mfcc.conf")
+                && (nonEmpty(d, "graph/HCLG.fst")
+                    || (nonEmpty(d, "graph/HCLr.fst") && nonEmpty(d, "graph/Gr.fst")));
+        return d.isDirectory() && (legacy || current);
+    }
+
+    private static boolean nonEmpty(File root, String relativePath) {
+        File file = new File(root, relativePath);
+        return file.isFile() && file.length() > 0L;
     }
 
     public static void install(Context context, Progress progress) throws IOException {
@@ -102,11 +124,14 @@ public final class OfflineModelManager {
                     input.closeEntry();
                 }
             }
-            if (!valid(staging)) throw new IOException("Os arquivos baixados não formam um modelo Vosk válido.");
+            if (!valid(staging)) throw new IOException(
+                    "O pacote baixado está incompleto ou com estrutura desconhecida. "
+                    + "O EditoraAI agora aceita modelos Vosk v1 e v2, mas "
+                    + "ainda não encontrou os arquivos fundamentais; toque novamente para baixar.");
             File installed = modelDir(context);
             if (installed.exists()) remove(installed);
             if (!staging.renameTo(installed)) throw new IOException("Não foi possível concluir a instalação do modelo.");
-            progress.report("Modelo instalado: uso offline ativado", 100);
+            progress.report("Modelo de português conferido e instalado: transcrição offline liberada", 100);
         } finally {
             zip.delete();
             if (staging.exists()) remove(staging);

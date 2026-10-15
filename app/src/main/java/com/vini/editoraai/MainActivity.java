@@ -244,7 +244,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.2.1 TESTE  •  Legendas com diagnóstico  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.2.2 REPARO  •  Modelo PT-BR corrigido  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -294,7 +294,7 @@ public final class MainActivity extends Activity {
         }
         new AlertDialog.Builder(this)
                 .setTitle("Baixar o modelo de português?")
-                .setMessage("O reconhecimento offline precisa de um download inicial de aproximadamente 31 MB (e espaço extra para descompactar). Recomendamos usar Wi-Fi. Depois disso, suas legendas serão criadas no próprio celular sem internet e sem chave de API. Deseja baixar agora?")
+                .setMessage("A versão 0.2.2 corrigiu a compatibilidade com o modelo oficial de português do Vosk. Ela precisa baixar e conferir o modelo uma vez (~31 MB). Recomendamos Wi-Fi; depois você poderá legendar sem internet, sem chave de API. Deseja continuar?")
                 .setNegativeButton("Agora não", null)
                 .setPositiveButton("Baixar e legendar", (dialog, which) -> transcribeOffline(true))
                 .show();
@@ -322,7 +322,7 @@ public final class MainActivity extends Activity {
                 handler.post(() -> {
                     captionProgress.setIndeterminate(false);
                     captionProgress.setProgress(0);
-                    captionStatus("Download concluído. Agora analisando a voz do vídeo (espere até 100%)...");
+                    captionStatus("Modelo conferido. Agora analisando a voz do vídeo (espere até 100%)...");
                 });
                 List<Caption> found = OfflineTranscriber.transcribe(getApplicationContext(), requestedVideo, percent -> {
                     if (percent % 5 == 0) handler.post(() -> {
@@ -358,7 +358,7 @@ public final class MainActivity extends Activity {
                     captionProgress.setVisibility(View.GONE);
                     captionStatus("Não foi possível legendar: " + message);
                     new AlertDialog.Builder(this).setTitle("Falha nas legendas offline")
-                            .setMessage(message + "\n\nTente um vídeo curto (10–20 segundos) em que sua fala esteja clara. O modelo baixado continua instalado.")
+                            .setMessage(message + "\n\nSe o erro mencionar modelo, confira sua conexão e o espaço livre e tente baixar novamente. Se mencionar áudio ou reconhecimento, tente um vídeo curto com fala clara.")
                             .setPositiveButton("OK", null).show();
                 });
             }

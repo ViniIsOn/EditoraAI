@@ -1,3 +1,25 @@
+# EditoraAI v0.2.2 — Correção definitiva da validação do modelo PT-BR
+
+## Erro corrigido
+
+O download terminava, mas a versão v0.2.1 exibia «Os arquivos baixados não formam um modelo Vosk válido» mesmo com um vídeo de 10 segundos. **Isso não era causado pelo vídeo.** O modelo oficial `vosk-model-small-pt-0.3` utiliza o formato Vosk V1 (legado) com `final.mdl`, `mfcc.conf`, `HCLr.fst` e `Gr.fst` diretamente na raiz da pasta extraída. A validação anterior procurava somente a estrutura mais nova `am/final.mdl`, `conf/model.conf` e `graph/HCLG.fst`.
+
+O Vosk suporta os dois formatos: verifique `src/model.cc` do projeto oficial: https://github.com/alphacep/vosk-api/blob/master/src/model.cc. A v0.2.2 verifica ambos os formatos e a presença de arquivos não vazios, sem modificar o modelo. A instalação continua sendo transacional (pasta staging), com proteção contra caminhos suspeitos e limites de tamanho.
+
+## Como testar
+
+1. Instale o APK de diagnóstico **EditoraAI REPARO**. Ele usa pacote Android `com.vini.editoraai.reparo` para instalar **ao lado** das versões antigas, preservando os dados delas, inclusive se o arquivo debug foi assinado com outra chave.
+2. Importe o vídeo de 10 segundos com fala.
+3. Toque em **✦ Gerar legendas SEM INTERNET**, permita o download inicial do modelo de português (~31 MB compactado; exige espaço adicional).
+4. Espere ver «Modelo conferido» e o progresso da transcrição. Após completar, confirme a contagem em «03 Legendas com IA» e toque em **▶ Ver legendas na prévia**.
+5. Revise as palavras e exporte o vídeo 9:16.
+
+**Observações:** compilar o APK confirma integridade do código Java, mas ainda é preciso testar o reconhecimento real num Android. A transcrição é inteiramente local após o download. Não usa a Groq. Certifique-se de ter bateria e espaço livre suficientes para descompactar o modelo.
+
+## Componentes
+
+Java 17, Android API 26+, Media3, Vosk. Permanece disponível importação, prévia, corte, música, editor de legendas e exportação vertical 9:16.
+
 # EditoraAI v0.2.1 TESTE — correção da legenda offline
 
 Esta versão de diagnóstico corrige o fluxo de legendagem que podia parecer parado após baixar o modelo Vosk PT-BR. **O aplicativo de teste é instalado ao lado do EditoraAI anterior** (identificador `com.vini.editoraai.teste`) para não obrigar o usuário a desinstalar a versão antiga.
