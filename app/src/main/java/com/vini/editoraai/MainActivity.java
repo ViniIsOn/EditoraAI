@@ -23,6 +23,8 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -68,7 +70,12 @@ public final class MainActivity extends Activity {
     private String groqKey = ""; // memory-only, never saved to disk
     private long durationMs = 0, trimStartMs = 0, trimEndMs = 0;
     private boolean busy = false;
-    private SeekBar startSeek, endSeek;
+    private SeekBar startSeek, endSeek, timelineSeek;
+    private int captionStyle = 0, captionAnimation = 0;
+    private boolean timelineTouch = false;
+    private LinearLayout captionChips;
+    private Spinner styleSpinner, animationSpinner;
+    private TextView timelineLabel;
     private TextView trimLabel, captionsLabel, captionsStatus, previewCaption, fileLabel, musicLabel, status;
     private ProgressBar progress, captionProgress;
     private Button exportBtn, cancelBtn, shareBtn;
@@ -97,9 +104,15 @@ public final class MainActivity extends Activity {
             if (!isFinishing()) {
                 if (player != null && videoUri != null) {
                     long t = player.getCurrentPosition();
-                    String line = "";
-                    for (Caption c : captions) if (c.contains(t)) { line = c.text; break; }
-                    previewCaption.setText(line);
+                    Caption active = null;
+                    for (Caption c : captions) if (c.contains(t)) { active = c; break; }
+                    previewCaption.setText(active == null ? "" : active.text);
+                    CaptionStyle.preview(previewCaption, captionStyle, captionAnimation,
+                            active == null ? 0 : Math.max(0, t - active.startMs), active != null);
+                    if (timelineSeek != null && durationMs > 0 && !timelineTouch) {
+                        timelineSeek.setProgress((int)Math.min(timelineSeek.getMax(), t / 100));
+                        timelineLabel.setText(clock(t) + " / " + clock(durationMs));
+                    }
                     // Loop selected range during preview.
                     if (player.isPlaying() && trimEndMs > trimStartMs && t >= trimEndMs) {
                         player.seekTo(trimStartMs);
@@ -144,6 +157,25 @@ public final class MainActivity extends Activity {
         FrameLayout.LayoutParams subp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
         subp.leftMargin = dp(14); subp.rightMargin = dp(14); subp.bottomMargin = dp(60);
         previewFrame.addView(previewCaption, subp);
+        previewCaption.setVisibility(View.INVISIBLE);
+        timelineLabel = label("00:00.0 / 00:00.0", 12, CYAN, true);
+        timelineLabel.setGravity(Gravity.CENTER);
+        previewPanel.addView(timelineLabel);
+        timelineSeek = new SeekBar(this);
+        timelineSeek.setMax(1);
+        timelineSeek.setProgressTintList(android.content.res.ColorStateList.valueOf(CYAN));
+        timelineSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int position, boolean fromUser) {
+                if (!fromUser || player == null || durationMs <= 0) return;
+                long ms = Math.min(durationMs, position * 100L);
+                timelineLabel.setText(clock(ms) + " / " + clock(durationMs));
+                player.seekTo(ms);
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { timelineTouch = true; }
+            @Override public void onStopTrackingTouch(SeekBar bar) { timelineTouch = false; }
+        });
+        previewPanel.addView(timelineSeek);
+        previewPanel.addView(label("Arraste a linha do tempo para revisar a fala.", 11, MUTED, false));
         fileLabel = label("Nenhum vídeo selecionado", 12, MUTED, false);
         fileLabel.setPadding(0, dp(10), 0, 0);
         previewPanel.addView(fileLabel);
@@ -209,6 +241,42 @@ public final class MainActivity extends Activity {
         captionsBox.addView(action("Editar legendas", false, this::openCaptionEditor));
         gap(captionsBox, 8);
         captionsBox.addView(action("+ Adicionar legenda manual", false, this::addManualCaption));
+        gap(captionsBox, 13);
+        captionsBox.addView(label("ESTILO DA LEGENDA", 12, CYAN, true));
+        styleSpinner = new Spinner(this);
+        ArrayAdapter<String> styleAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, CaptionStyle.STYLES);
+        styleSpinner.setAdapter(styleAdapter);
+        captionsBox.addView(styleSpinner);
+        gap(captionsBox, 8);
+        captionsBox.addView(label("ANIMAÇÃO DE ENTRADA", 12, CYAN, true));
+        animationSpinner = new Spinner(this);
+        ArrayAdapter<String> animationAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, CaptionStyle.ANIMATIONS);
+        animationSpinner.setAdapter(animationAdapter);
+        captionsBox.addView(animationSpinner);
+        styleSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                captionStyle = CaptionStyle.safeStyle(position);
+                saveProject();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        animationSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                captionAnimation = CaptionStyle.safeAnimation(position);
+                saveProject();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        gap(captionsBox, 9);
+        captionsBox.addView(label("TRECHOS NA LINHA DO TEMPO", 12, CYAN, true));
+        android.widget.HorizontalScrollView chipScroll = new android.widget.HorizontalScrollView(this);
+        chipScroll.setHorizontalScrollBarEnabled(false);
+        captionChips = new LinearLayout(this);
+        captionChips.setOrientation(LinearLayout.HORIZONTAL);
+        chipScroll.addView(captionChips);
+        captionsBox.addView(chipScroll);
         captionsLabel = label("0 legendas", 12, MUTED, false);
         captionsLabel.setPadding(0, dp(11), 0, 0);
         captionsBox.addView(captionsLabel);
@@ -244,7 +312,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.2.2 REPARO  •  Modelo PT-BR corrigido  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.3 ESTÚDIO  •  Estilos e animações  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -497,6 +565,25 @@ public final class MainActivity extends Activity {
     }
     private void sortCaptions() { Collections.sort(captions, Comparator.comparingLong(c -> c.startMs)); }
     private void updateCaptionsLabel() {
+        if (captionChips != null) {
+            captionChips.removeAllViews();
+            if (captions.isEmpty()) {
+                TextView empty = label("As legendas criadas aparecerão aqui.", 12, MUTED, false);
+                captionChips.addView(empty);
+            } else {
+                for (Caption c : captions) {
+                    String shortText = c.text.length() > 32 ? c.text.substring(0, 29) + "…" : c.text;
+                    Button chip = action(clock(c.startMs) + "  " + shortText, false, () -> {
+                        if (player == null || videoUri == null) return;
+                        player.seekTo(Math.max(0, c.startMs));
+                        player.play();
+                    });
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(52));
+                    lp.rightMargin = dp(7);
+                    captionChips.addView(chip, lp);
+                }
+            }
+        }
         captionsLabel.setText(captions.isEmpty()
                 ? "0 legendas geradas — nada será exibido no vídeo ainda."
                 : "✅ " + captions.size() + " legendas salvas — toque em ▶ Ver legendas na prévia ou em Editar.");
@@ -512,7 +599,7 @@ public final class MainActivity extends Activity {
         info("Preparando renderização com áudio e legendas...");
         try {
             exporter.start(getApplicationContext(), videoUri, musicUri, trimStartMs, trimEndMs,
-                    new ArrayList<>(captions), new VideoExporter.Listener() {
+                    new ArrayList<>(captions), captionStyle, captionAnimation, new VideoExporter.Listener() {
                         @Override public void success(File mp4) {
                             info("Finalizando o MP4 na galeria...");
                             work.execute(() -> {
@@ -596,6 +683,7 @@ public final class MainActivity extends Activity {
     private static String clock(long ms) { return String.format(Locale.getDefault(), "%02d:%02d.%01d", ms/60000, (ms/1000)%60, (ms%1000)/100); }
     private void refreshTrims() {
         if (durationMs <= 0) return;
+        if (timelineSeek != null) timelineSeek.setMax((int) Math.max(1, durationMs / 100));
         startSeek.setMax((int) Math.max(1, durationMs/100));
         endSeek.setMax((int) Math.max(1, durationMs/100));
         startSeek.setProgress((int) (trimStartMs/100));
@@ -608,12 +696,17 @@ public final class MainActivity extends Activity {
         e.putString("video", videoUri == null ? "" : videoUri.toString());
         e.putString("music", musicUri == null ? "" : musicUri.toString());
         e.putLong("start", trimStartMs); e.putLong("end", trimEndMs);
+        e.putInt("caption_style", captionStyle); e.putInt("caption_animation", captionAnimation);
         JSONArray arr = new JSONArray(); for (Caption c : captions) arr.put(c.toJson());
         e.putString("captions", arr.toString()); e.apply();
     }
     private void restoreProject() {
         SharedPreferences p = getSharedPreferences("editor", MODE_PRIVATE);
         try {
+            captionStyle = CaptionStyle.safeStyle(p.getInt("caption_style", 0));
+            captionAnimation = CaptionStyle.safeAnimation(p.getInt("caption_animation", 0));
+            if (styleSpinner != null) styleSpinner.setSelection(captionStyle);
+            if (animationSpinner != null) animationSpinner.setSelection(captionAnimation);
             String v = p.getString("video", "");
             if (!v.isEmpty()) {
                 videoUri = Uri.parse(v); trimStartMs = p.getLong("start", 0); trimEndMs = p.getLong("end", 0);
