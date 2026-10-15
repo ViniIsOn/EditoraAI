@@ -101,7 +101,8 @@ public final class AnalystActivity extends Activity {
         root.addView(button("☁ Google Drive • imagem ou GIF na nuvem",()->pickCloudDocument("image/*")));
         root.addView(button("🎞 Pesquisar vídeos no YouTube",()->youtubeSearch("")));
         root.addView(button("▶ Guardar link de um vídeo do YouTube",this::youtubeLinkDialog));
-        root.addView(button("🎬 Escolher vídeo meu no Drive / Fotos",()->pickFromGoogle("video/*")));
+        root.addView(button("🎬 Escolher vídeo meu no Drive / Fotos",()->pickFromGoogle("video/*"))); 
+        root.addView(button("☁ Escolher vídeo do Drive como vídeo principal",()->pickCloudDocument("video/*")));
         root.addView(button("🖼 Importar minha imagem",()->pickImage(requestedStartMs,"image")));
         root.addView(button("😆 Importar meu meme PNG / JPG / GIF",()->pickImage(requestedStartMs,"meme")));
         root.addView(button("🔊 Inserir efeito sonoro original",this::chooseSound));
@@ -118,6 +119,31 @@ public final class AnalystActivity extends Activity {
         root.addView(text("YouTube: links são para assistir e consultar, NÃO entram no MP4. Para exportar clipes use seus arquivos de vídeo ou material autorizado pelo titular. Google Fotos/Drive: o Android busca apenas o item escolhido; não são baixados packs. O arquivo na nuvem pode precisar de conexão ao exportar.",12,CYAN));
     }
 
+
+    private void inputImageUrl() {
+        EditText input=new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("https://exemplo.com/imagem.gif");
+        new AlertDialog.Builder(this).setTitle("Inserir mídia da internet por URL")
+            .setMessage("Cole o LINK DIRETO de uma imagem ou GIF HTTPS de até 8 MB. O aplicativo obtém somente este arquivo quando você confirma, sem baixar nenhum pack. Confira a licença antes de reutilizar.")
+            .setView(input)
+            .setNegativeButton("Cancelar",null)
+            .setPositiveButton("Importar este link",(d,w)->{
+                String raw=input.getText().toString().trim();
+                if(!raw.startsWith("https://")){message("Use um link direto HTTPS.");return;}
+                final long start=requestedStartMs;
+                message("Carregando a mídia escolhida (limite 8 MB)...");
+                io.execute(()->{
+                    try {
+                        Uri image=RemoteImageImporter.importSelected(getApplicationContext(),raw);
+                        main.post(()->saveCue(new MediaCue("image",image.toString(),
+                            "Imagem por URL","Origem: "+raw,"",start,end(start,3500),1)));
+                    } catch(Exception ex) {
+                        main.post(()->message("Não consegui importar a imagem: "+ex.getMessage()));
+                    }
+                });
+            }).show();
+    }
     private void googleImageSearch() {
         EditText query=new EditText(this);
         query.setSingleLine(true);
@@ -279,10 +305,16 @@ public final class AnalystActivity extends Activity {
             if(contentType!=null&&contentType.startsWith("video/")){
                 // Vídeo da nuvem pode ser usado como vídeo PRINCIPAL no editor.
                 // Não o substituímos silenciosamente, para preservar seu projeto.
-                message("Vídeo escolhido na nuvem. Volte ao editor e importe este vídeo pela seção ARQUIVOS para usá-lo como principal.");
-                new AlertDialog.Builder(this).setTitle("Vídeo na nuvem selecionado")
-                    .setMessage("Para usar este vídeo como material principal, abra-o na seção Arquivos do editor. Não importamos vídeos do YouTube para o MP4.")
-                    .setPositiveButton("Entendi",null).show();
+                new AlertDialog.Builder(this).setTitle("Usar vídeo da nuvem no editor?")
+                    .setMessage("Isso troca o vídeo principal (e limpa as legendas da gravação anterior). O Android pode precisar buscar os dados do vídeo na nuvem durante a exportação. Links de vídeos do YouTube continuam apenas como referências.")
+                    .setPositiveButton("Usar este vídeo",(d,w)->{
+                        Intent result=new Intent();
+                        result.setData(uri);
+                        result.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        setResult(RESULT_OK,result);
+                        finish();
+                    })
+                    .setNegativeButton("Cancelar",null).show();
             }else{
                 saveCue(new MediaCue(requestedKind,uri.toString(),name(uri),"Minha mídia na nuvem","",
                         requestedStartMs,requestedEndMs,1));
