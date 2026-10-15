@@ -1,5 +1,7 @@
 package com.vini.editoraai;
 
+import android.content.Context;
+import java.io.File;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -25,7 +27,7 @@ public final class CaptionStyle {
     public static final String[] FONTS = {
         "Impacto • Black", "Moderna • Sans", "Condensada • Bold", "Arredondada • Rounded",
         "Elegante • Serif", "Máquina • Mono", "Escrita • Casual", "Manuscrita • Cursive",
-        "Fina • Light", "Intermediária • Medium", "Tradicional • Serif Bold", "Pequenas caps • Small Caps"
+        "Fina • Light", "Intermediária • Medium", "Tradicional • Serif Bold", "Pequenas caps • Small Caps", "Minha fonte .TTF/.OTF"
     };
     private static final String[] FAMILIES = {
         "sans-serif-black", "sans-serif", "sans-serif-condensed", "sans-serif-rounded",
@@ -38,6 +40,8 @@ public final class CaptionStyle {
         "Digitação • letra a letra", "Pulse • pulsar", "Cair • de cima"
     };
     public static final String[] POSITIONS = {"Embaixo", "Centro", "Em cima"};
+    public static final int CUSTOM_FONT_INDEX = FONTS.length-1;
+    public static File customFontFile(Context context){return new File(context.getFilesDir(),"editora_custom_font.ttf");}
     private static final int CYAN = Color.rgb(68, 240, 241);
     private static final int YELLOW = Color.rgb(255, 219, 60);
     private static final int PINK = Color.rgb(255, 126, 216);
@@ -103,8 +107,18 @@ public final class CaptionStyle {
     }
     public static Typeface font(int raw) {
         int idx=safeFont(raw);
+        if(idx>=FAMILIES.length) idx=0;
         int weight=(idx==7 || idx==8 || idx==9) ? Typeface.NORMAL : Typeface.BOLD;
         return Typeface.create(FAMILIES[idx], weight);
+    }
+    public static Typeface font(Context context,int raw){
+        if(safeFont(raw)==CUSTOM_FONT_INDEX) {
+            try {
+                File file=customFontFile(context);
+                if(file.isFile()) return Typeface.createFromFile(file);
+            } catch(Exception ignored){}
+        }
+        return font(raw);
     }
     public static int textColor(int raw) {
         switch (safeStyle(raw)) {
@@ -136,7 +150,7 @@ public final class CaptionStyle {
         view.setTranslationY(dy(anim,ageMs)*density*.48f);
         view.setRotation(rotation(anim,ageMs));
         view.setTextSize((style==3 ? 18f : 22f)*safeSize(rawSize)/100f);
-        view.setTypeface(font(rawFont));
+        view.setTypeface(font(view.getContext(),rawFont));
         view.setAllCaps(style!=3 && style!=5);
         view.setGravity(Gravity.CENTER);
         view.setPadding((int)(13*density),(int)(9*density),(int)(13*density),(int)(9*density));
@@ -169,13 +183,13 @@ public final class CaptionStyle {
 
     /** Exact typography and time-driven animation burned into the exported MP4. */
     public static void draw(Canvas canvas,String rawText,int rawStyle,int rawAnimation,
-                            int rawFont,int rawSize,long ageMs) {
+                            int rawFont,int rawSize,long ageMs,Typeface resolvedFont) {
         int style=safeStyle(rawStyle), anim=safeAnimation(rawAnimation);
         String content=shownText(rawText,anim,ageMs).replace('\n',' ').trim();
         if (content.isEmpty()) return;
         if (style!=3 && style!=5) content=content.toUpperCase(Locale.forLanguageTag("pt-BR"));
         Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG|Paint.SUBPIXEL_TEXT_FLAG);
-        paint.setTypeface(font(rawFont));
+        paint.setTypeface(resolvedFont==null?font(rawFont):resolvedFont);
         paint.setTextAlign(Paint.Align.CENTER);
         float f=(style==3?45f:54f)*safeSize(rawSize)/100f;
         List<String> lines;

@@ -1,5 +1,7 @@
 package com.vini.editoraai;
 
+import android.content.Context;
+import android.graphics.Typeface;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -17,17 +19,19 @@ public final class CaptionOverlay extends BitmapOverlay {
     private final List<Caption> captions;
     private final long trimStartMs;
     private final int style,animation,font,size,position;
+    private final Typeface resolvedFont;
     private final StaticOverlaySettings settings;
     private Bitmap bitmap;
     private String lastText=null;
     private long lastStep=Long.MIN_VALUE;
-    public CaptionOverlay(List<Caption> captions,long trimStartMs,
+    public CaptionOverlay(Context context,List<Caption> captions,long trimStartMs,
                           int style,int animation,int font,int size,int position) {
         this.captions=new ArrayList<>(captions);
         this.trimStartMs=trimStartMs;
         this.style=CaptionStyle.safeStyle(style);
         this.animation=CaptionStyle.safeAnimation(animation);
         this.font=CaptionStyle.safeFont(font);
+        this.resolvedFont=CaptionStyle.font(context,font);
         this.size=CaptionStyle.safeSize(size);
         this.position=CaptionStyle.safePosition(position);
         // OpenGL origin is at image center, vertical - is below center.
@@ -49,7 +53,7 @@ public final class CaptionOverlay extends BitmapOverlay {
             lastText=s;lastStep=step;
             Canvas canvas=new Canvas(bitmap);
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-            if(active!=null)CaptionStyle.draw(canvas,s,style,animation,font,size,age);
+            if(active!=null)CaptionStyle.draw(canvas,s,style,animation,font,size,age,resolvedFont);
         }
         return bitmap;
     }

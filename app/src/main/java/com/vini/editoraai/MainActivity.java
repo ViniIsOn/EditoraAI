@@ -42,6 +42,8 @@ import org.json.JSONArray;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -54,6 +56,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final int REQ_VIDEO = 71;
     private static final int REQ_MUSIC = 72;
+    private static final int REQ_FONT = 73;
     private static final int BG = Color.rgb(9, 15, 29);
     private static final int PANEL = Color.rgb(20, 30, 49);
     private static final int CYAN = Color.rgb(44, 216, 221);
@@ -278,8 +281,15 @@ public final class MainActivity extends Activity {
         ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CaptionStyle.FONTS);
         fontSpinner.setAdapter(fontAdapter);
         captionsBox.addView(fontSpinner);
+        gap(captionsBox, 8);
+        captionsBox.addView(action("＋ Importar minha fonte TTF / OTF", false, this::chooseFontFile));
+        captionsBox.addView(label("Use fontes que você tenha permissão para utilizar.", 11, MUTED, false));
         fontSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int index, long id) {
+                if(index==CaptionStyle.CUSTOM_FONT_INDEX&&!CaptionStyle.customFontFile(MainActivity.this).isFile()){
+                    info("Primeiro use o botão Importar minha fonte.");
+                    fontSpinner.setSelection(0);return;
+                }
                 captionFont = CaptionStyle.safeFont(index);
                 saveProject();
             }
@@ -357,7 +367,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.4 TIPOGRAFIA  •  12 fontes + 12 efeitos  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.4.1 TIPOGRAFIA  •  12 fontes + 12 efeitos  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -374,6 +384,7 @@ public final class MainActivity extends Activity {
         Uri uri = data.getData();
         try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
         catch (SecurityException ignored) { }
+        if (requestCode == REQ_FONT) { importUserFont(uri); return; }
         if (requestCode == REQ_VIDEO) {
             videoUri = uri;
             durationMs = 0; trimStartMs = 0; trimEndMs = 0;
@@ -389,6 +400,41 @@ public final class MainActivity extends Activity {
             info("Música de fundo adicionada.");
         }
         saveProject();
+    }
+
+    private void chooseFontFile(){
+        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(intent,REQ_FONT);
+    }
+    private void importUserFont(Uri uri){
+        String filename=displayName(uri).toLowerCase(Locale.ROOT);
+        if(!filename.endsWith(".ttf")&&!filename.endsWith(".otf")){
+            error("Selecione uma fonte .ttf ou .otf.");return;
+        }
+        File temporary=new File(getFilesDir(),"caption_font_pending.bin");
+        File target=CaptionStyle.customFontFile(this);
+        try(InputStream input=getContentResolver().openInputStream(uri);
+            FileOutputStream output=new FileOutputStream(temporary)){
+            if(input==null)throw new java.io.IOException("Sem acesso ao arquivo.");
+            long total=0;int n;byte[] buffer=new byte[8192];
+            while((n=input.read(buffer))!=-1){
+                total+=n;
+                if(total>6L*1024*1024)throw new java.io.IOException("Fonte maior que 6 MB.");
+                output.write(buffer,0,n);
+            }
+            output.flush();
+            Typeface.createFromFile(temporary);
+            if(target.exists()&&!target.delete())throw new java.io.IOException("Falha ao substituir a fonte.");
+            if(!temporary.renameTo(target))throw new java.io.IOException("Falha ao salvar a fonte.");
+            captionFont=CaptionStyle.CUSTOM_FONT_INDEX;
+            fontSpinner.setSelection(captionFont);
+            saveProject();
+            info("Fonte personalizada pronta! Veja na prévia e exporte.");
+        }catch(Exception e){ error("Fonte não importada: "+e.getMessage()); }
+        finally {if(temporary.exists())temporary.delete();}
     }
 
     private String displayName(Uri uri) {
@@ -753,6 +799,8 @@ public final class MainActivity extends Activity {
             captionStyle = CaptionStyle.safeStyle(p.getInt("caption_style", 0));
             captionAnimation = CaptionStyle.safeAnimation(p.getInt("caption_animation", 0));
             captionFont = CaptionStyle.safeFont(p.getInt("caption_font", 0));
+            if(captionFont==CaptionStyle.CUSTOM_FONT_INDEX
+                &&!CaptionStyle.customFontFile(this).isFile())captionFont=0;
             captionSize = CaptionStyle.safeSize(p.getInt("caption_size", 100));
             captionPosition = CaptionStyle.safePosition(p.getInt("caption_position", 0));
             if (styleSpinner != null) styleSpinner.setSelection(captionStyle);

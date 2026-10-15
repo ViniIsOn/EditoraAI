@@ -51,7 +51,7 @@ public final class VideoExporter {
         videoEffects.add(Presentation.createForWidthAndHeight(720, 1280,
                 Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
         if (!captions.isEmpty()) {
-            List<TextureOverlay> overlays = Collections.singletonList(new CaptionOverlay(captions, startMs, style, animation, font, size, position));
+            List<TextureOverlay> overlays = Collections.singletonList(new CaptionOverlay(context, captions, startMs, style, animation, font, size, position));
             videoEffects.add(new OverlayEffect(overlays));
         }
         EditedMediaItem editedVideo = new EditedMediaItem.Builder(video)
