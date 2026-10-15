@@ -1,6 +1,11 @@
 # EditoraAI 🎬 — Editor de vídeo Android para Kwai
 
-Primeira versão funcional (v0.1): projeto Android nativo em **Java + Media3**, sem anúncios, voltado para Shorts, Reels e Kwai.
+Versão de teste com ícone próprio (v0.1.1): projeto Android nativo em **Java + Media3**, sem anúncios, voltado para Shorts, Reels e Kwai.
+
+## Novidade v0.1.1
+
+- Ícone do app personalizado: arara azul, claquete e nome EditoraAI.
+- A versão de teste mantém `applicationId` original, mas APKs debug de execuções diferentes do GitHub Actions podem ser assinados com chaves distintas; se o Android recusar a atualização, não desinstale sem salvar os projetos e arquivos importantes.
 
 ## O que está implementado
 
@@ -18,14 +23,14 @@ Primeira versão funcional (v0.1): projeto Android nativo em **Java + Media3**, 
 
 1. Abra o repositório no GitHub e toque em **Actions**.
 2. Abra a execução **Gerar APK Android** (iniciada após cada push ou pelo botão *Run workflow*).
-3. Após concluir com ✔, em **Artifacts**, baixe **EditoraAI-v0.1-APK**.
+3. Após concluir com ✔, em **Artifacts**, baixe **EditoraAI-v0.1.1-APK**.
 4. Extraia o `.zip` e instale o `app-debug.apk` no Android.
 
 O APK de depuração não é uma versão de loja. Android 8.0 ou posterior, com desempenho dependente do aparelho.
 
 ## Como usar legendas IA
 
-1. Acesse https://console.groq.com/keys e gere sua própria chave API, respeitando os termos da plataforma (podem existir limites/custos).
+1. **A Groq exige usuários de 18 anos ou mais.** Se você for menor, não crie uma conta para contornar a regra. Um responsável pode verificar os termos e, se permitido, administrar a própria chave em https://console.groq.com/keys; nunca publique chaves no GitHub. Os recursos de edição manual funcionam sem a API.
 2. Importe um vídeo gravado com áudio **AAC**.
 3. Toque em **Transcrever fala automaticamente**, cole a chave e aguarde.
 4. Revise as palavras e tempos; toque em **Exportar**.
