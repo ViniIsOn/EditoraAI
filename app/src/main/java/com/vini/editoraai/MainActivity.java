@@ -198,9 +198,11 @@ public final class MainActivity extends Activity {
 
         LinearLayout captionsBox = panel(root);
         title(captionsBox, "03  LEGENDAS COM IA");
-        captionsBox.addView(label("Whisper reconhece a fala em português e cria legendas sincronizadas. Requer internet e chave da API Groq. O áudio do vídeo é enviado ao serviço.", 13, MUTED, false));
+        captionsBox.addView(label("NOVO • Legendas offline em português! Na primeira vez, baixe o modelo Vosk (~31 MB); depois transcreva vídeos sem API nem internet. A voz não sai do aparelho. Revise possíveis erros de reconhecimento.", 13, MUTED, false));
         gap(captionsBox, 11);
-        captionsBox.addView(action("✦ Transcrever fala automaticamente", true, this::requestTranscription));
+        captionsBox.addView(action("✦ Gerar legendas SEM INTERNET", true, this::requestOfflineTranscription));
+        gap(captionsBox, 8);
+        captionsBox.addView(action("Usar Groq/Whisper (opcional)", false, this::requestTranscription));
         gap(captionsBox, 8);
         captionsBox.addView(action("Editar legendas", false, this::openCaptionEditor));
         gap(captionsBox, 8);
@@ -230,7 +232,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.1  •  Projeto Android nativo  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.2  •  Projeto Android nativo  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -271,8 +273,69 @@ public final class MainActivity extends Activity {
         return uri.getLastPathSegment() != null ? uri.getLastPathSegment() : "arquivo";
     }
 
+    /** O download do modelo é opt-in; nada do áudio sai do aparelho na transcrição local. */
+    private void requestOfflineTranscription() {
+        if (!ensureVideo() || busy) return;
+        if (OfflineModelManager.isInstalled(this)) {
+            transcribeOffline(false);
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Baixar o modelo de português?")
+                .setMessage("O reconhecimento offline precisa de um download inicial de aproximadamente 31 MB (e espaço extra para descompactar). Recomendamos usar Wi-Fi. Depois disso, suas legendas serão criadas no próprio celular sem internet e sem chave de API. Deseja baixar agora?")
+                .setNegativeButton("Agora não", null)
+                .setPositiveButton("Baixar e legendar", (dialog, which) -> transcribeOffline(true))
+                .show();
+    }
+
+    private void transcribeOffline(boolean installFirst) {
+        if (busy) return;
+        final Uri requestedVideo = videoUri;
+        setBusy(true);
+        if (installFirst) {
+            progress.setVisibility(View.VISIBLE);
+            progress.setProgress(0);
+            cancelBtn.setVisibility(View.GONE); // o cancelamento mostrado pertence ao exportador
+            info("Preparando o modelo PT-BR...");
+        } else info("Lendo o áudio do seu vídeo no próprio celular...");
+        work.execute(() -> {
+            try {
+                if (installFirst) OfflineModelManager.install(getApplicationContext(), (stage, percent) ->
+                        handler.post(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            progress.setProgress(percent);
+                            info(stage + (percent > 0 ? " • " + percent + "%" : ""));
+                        }));
+                handler.post(() -> {
+                    progress.setVisibility(View.GONE);
+                    info("IA offline reconhecendo sua fala... Aguarde.");
+                });
+                List<Caption> found = OfflineTranscriber.transcribe(getApplicationContext(), requestedVideo, percent -> {
+                    if (percent % 10 == 0) handler.post(() -> info("Reconhecendo fala offline: " + percent + "%"));
+                });
+                handler.post(() -> {
+                    // Se foi escolhido outro vídeo, não sobrescrever suas legendas.
+                    if (!requestedVideo.equals(videoUri)) {
+                        setBusy(false); info("O vídeo mudou; legendas antigas preservadas."); return;
+                    }
+                    if (found.isEmpty()) {
+                        setBusy(false);
+                        info("Não encontrei fala reconhecível. Tente um áudio mais claro ou use legendas manuais.");
+                        return;
+                    }
+                    captions.clear(); captions.addAll(found);
+                    sortCaptions(); updateCaptionsLabel(); saveProject(); setBusy(false);
+                    info("Pronto! " + found.size() + " legendas criadas SEM API. Revise o texto antes de exportar.");
+                });
+            } catch (Exception ex) {
+                String message = ex.getMessage() == null ? ex.toString() : ex.getMessage();
+                handler.post(() -> { setBusy(false); progress.setVisibility(View.GONE); error("Legendas offline: " + message); });
+            }
+        });
+    }
+
     private void requestTranscription() {
-        if (!ensureVideo()) return;
+        if (!ensureVideo() || busy) return;
         if (groqKey.isEmpty()) {
             EditText key = new EditText(this);
             key.setSingleLine(true);
