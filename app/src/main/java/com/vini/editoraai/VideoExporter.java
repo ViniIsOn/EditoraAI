@@ -56,14 +56,13 @@ public final class VideoExporter {
         }
         EditedMediaItem editedVideo = new EditedMediaItem.Builder(video)
                 .setEffects(new Effects(Collections.emptyList(), videoEffects)).build();
-        EditedMediaItemSequence main = EditedMediaItemSequence.withAudioAndVideoFrom(
-                Collections.singletonList(editedVideo));
+        EditedMediaItemSequence main = new EditedMediaItemSequence.Builder(editedVideo).build();
 
         Composition composition;
         if (musicUri != null) {
             EditedMediaItem audioItem = new EditedMediaItem.Builder(MediaItem.fromUri(musicUri)).build();
-            EditedMediaItemSequence track = EditedMediaItemSequence.withAudioFrom(
-                    Collections.singletonList(audioItem)).buildUpon().setIsLooping(true).build();
+            EditedMediaItemSequence track = new EditedMediaItemSequence.Builder(audioItem)
+                    .setIsLooping(true).build();
             composition = new Composition.Builder(main, track).build();
         } else {
             composition = new Composition.Builder(main).build();
