@@ -41,7 +41,8 @@ public final class VideoExporter {
     public void start(Context context, Uri videoUri, Uri musicUri, long startMs, long endMs,
                       List<Caption> captions, List<MediaCue> mediaCues, int style, int animation, int font,
                       int size, int position, int voiceVolume, int musicVolume, long musicDelay,
-                      boolean ducking, int duckPercent, Listener callback) {
+                      boolean ducking, int duckPercent, boolean watermark, int watermarkCorner,
+                      int watermarkSize,int watermarkAlpha, Listener callback) {
         output = new File(context.getCacheDir(), "editora_export_" + System.currentTimeMillis() + ".mp4");
         if (output.exists()) output.delete();
 
@@ -69,6 +70,14 @@ public final class VideoExporter {
         if (!captions.isEmpty()) {
             overlays.add(new CaptionOverlay(context, captions, startMs, style,
                     animation, font, size, position));
+        }
+        if(watermark){
+            try {
+                overlays.add(new WatermarkOverlay(context,watermarkCorner,watermarkSize,watermarkAlpha));
+            }catch(Exception ex){
+                callback.error("Não foi possível preparar marca d'água: "+ex.getMessage());
+                return;
+            }
         }
         if (!overlays.isEmpty()) videoEffects.add(new OverlayEffect(overlays));
         List<androidx.media3.common.audio.AudioProcessor> voiceFx = new ArrayList<>();

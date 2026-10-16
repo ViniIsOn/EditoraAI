@@ -8,15 +8,15 @@ android {
         applicationId 'com.vini.editoraai'
         minSdk 26
         targetSdk 35
-        versionCode 12
-        versionName '0.8.0'
+        versionCode 13
+        versionName '0.9.0'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes {
         debug {
             // Instala ao lado da v0.2; não exige desinstalar nem perder dados da anterior.
-            applicationIdSuffix '.teleprompter'
-            manifestPlaceholders = [appLabel: 'EditoraAI TELEPROMPTER']
+            applicationIdSuffix '.marca'
+            manifestPlaceholders = [appLabel: 'EditoraAI MARCA']
         }
         release {
             minifyEnabled false

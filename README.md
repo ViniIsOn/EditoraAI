@@ -1,47 +1,30 @@
-# EditoraAI v0.8 — Teleprompter e câmera frontal integrada
+# EditoraAI v0.9 — Marca d'água Poder Azul
 
-## Gravar e editar no mesmo app
+Esta atualização mantém os recursos anteriores: gravação com câmera frontal e teleprompter, mixagem de voz e música, Vosk PT-BR offline, sobreposições, GIFs, legendas, legendas animadas, efeitos e exportação MP4 vertical.
 
-Na tela inicial, seção **01 Arquivos**, toque em **🎥 GRAVAR MEU ROSTO COM TELEPROMPTER**.
+## Marca d'água personalizada
 
-O novo gravador usa **CameraX 1.4.2** e fornece:
+- Na tela principal: seção **MARCA D'ÁGUA • PODER AZUL**.
+- Escolher imagem na galeria/documentos: PNG com fundo transparente é recomendado, mas JPG e WebP estáticos também funcionam.
+- A imagem escolhida é copiada e convertida para PNG **no armazenamento privado do app**; não precisa selecioná-la a cada gravação.
+- Mostra a marca d'água na **prévia do vídeo** e aplica o mesmo tamanho/posição ao MP4 exportado.
+- Quatro posições: superior esquerda, superior direita, inferior esquerda e inferior direita.
+- Tamanho de **12% a 45% da largura**, respeitando altura máxima de 32% do vídeo para não cobrir tudo.
+- Transparência de **15% a 100%**.
+- Opção ligar/desligar e remover o logo salvo; se não houver logo selecionado, nenhum watermark é exportado.
+- O recurso usa Media3 BitmapOverlay para compor a imagem em todas as frames do vídeo, sem recodificação extra separada.
+- Os ajustes do projeto são persistidos nas preferências. Alterar o vídeo não apaga o logo.
 
-- **Prévia da câmera frontal** (ou traseira caso não haja câmera frontal).
-- **Áudio pelo microfone** gravado junto com o vídeo.
-- **Roteiro na tela** em uma caixa escura próxima da lente: cola/edita um texto, rola automaticamente durante a gravação e **não aparece no MP4**.
-- Um roteiro de exemplo adaptável para a revelação de rosto do canal Poder Azul e os 300 seguidores, que pode ser substituído por qualquer texto.
-- **Velocidade do texto** de 12 a 132 pixels lógicos por segundo e **tamanho de letra** de 18 a 44 sp.
-- **Contagem de 3 segundos**, gravar, pausar, retomar, parar e salvar.
-- **Salva em Filmes/EditoraAI na galeria** em Android 10+ com MediaStore. Em Android 8/9 grava no diretório privado de vídeos e solicita indexação à galeria.
-- A gravação finalizada **volta automaticamente ao editor** como vídeo principal: pode criar legendas Vosk PT-BR offline, música, volume, memes, GIFs, SFX e exportação 9:16.
-- Roteiro, velocidade e tamanho guardados no armazenamento privado do app.
-- **Permissões explícitas de câmera e microfone** somente ao abrir o gravador. O app não começa a filmar antes da contagem e de tocar em gravar.
-- O app evita deixar o teleprompter e o microfone ocultos durante uma gravação: exibe botão de parada, timer e status permanente.
+## Dica para o Kwai
 
-## Como gravar a revelação
+Use PNG com fundo transparente, canto inferior direito, tamanho 18%–24% e opacidade 70%–85%. Evite esconder o rosto ou a legenda. Teste numa gravação de 10 segundos; a prévia mostra a posição aproximada, mas o MP4 é o resultado definitivo.
 
-1. Abra **EditoraAI TELEPROMPTER** e toque **Gravar meu rosto com Teleprompter**.
-2. Permita **câmera e microfone**.
-3. Toque **Editar/colar roteiro** e use o texto completo da revelação. Configure tamanho e velocidade para conseguir ler perto da lente.
-4. Toque **GRAVAR VÍDEO**. Aguarde a contagem 3–2–1. Leia sem correr.
-5. Toque **PAUSAR** quando precisar e **RETOMAR** para continuar a mesma gravação.
-6. Toque **PARAR E USAR VÍDEO**. O vídeo é salvo na galeria e aberto automaticamente no editor.
-7. Gere legendas offline e importe somente trilhas musicais que você tem autorização para usar/publicar.
-8. Em Mixagem Inteligente, escolha volume da voz e início da trilha no tempo desejado.
-9. Exporte, verifique áudio, enquadramento e legendas antes de publicar.
+## Limitações
 
-## Compatibilidade e limitações
+- Aceita imagens estáticas PNG/JPG/WebP; GIFs em movimento não são marcas d'água nesta versão.
+- Logos grandes podem bloquear legendas. A imagem é redimensionada para no máximo 1500px durante a importação e limitada a 8MB no arquivo original.
+- Em vídeos que já tenham logo (por exemplo um MP4 exportado do InShot com logo), adicionar outra marca resulta em **duas marcas d'água**. Importe a gravação original sem logo se quiser uma única marca.
+- O conteúdo e a imagem não são enviados para um servidor para aplicação da marca d'água.
+- APK debug separado **com.vini.editoraai.marca** para não desinstalar versões antigas; ao instalar precisa redownload do modelo Vosk para uso offline.
 
-- Gravação com qualidade HD (720p), com fallback para qualidade disponível no celular. Saída orientada para vídeo vertical por meio da rotação e processamento do Android; o editor mantém formato exportado 720×1280.
-- O roteiro é um **overlay de leitura**, não um texto queimado no vídeo capturado. O arquivo MP4 tem rosto e voz, sem roteiro.
-- Prévia de câmera frontal pode ser espelhada; esta versão tenta alinhar o espelhamento do arquivo ao da prévia usando MirrorMode CameraX.
-- Só uma câmera e uma gravação por vez. Se a câmera/microfone não estiver disponível ou a permissão for negada, o app mostra um aviso.
-- O contador é iniciado na confirmação do gravador; podem ocorrer pequenas diferenças de tempo, dependendo do celular.
-- Evite mostrar detalhes privados no cenário do vídeo (endereço, escola, documentos, localização).
-- **Pacote debug separado:** `com.vini.editoraai.teleprompter`, instalado ao lado da v0.7 para não apagar projetos das versões anteriores. Não compartilha o modelo Vosk nem os dados privados com as versões antigas.
-
-## Build
-
-Android minSdk 26, targetSdk 35, CameraX 1.4.2, Media3 1.8.0, Java 17, Gradle 8.10.2. GitHub Actions gera `EditoraAI-v0.8.0-TELEPROMPTER-APK`.
-
-A compilação garante que o app é compilável; não valida a captura real nem a sincronização no hardware do celular. Antes de gravar um vídeo longo, faça um teste de 10 segundos e confira voz e imagem na galeria.
+Compilação Android JDK17/SDK35 Gradle 8.10.2, CameraX 1.4.2, Media3 1.8.0. Compilar não substitui o teste em aparelho real.

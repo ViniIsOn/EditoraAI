@@ -6,6 +6,8 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Movie;
 import android.graphics.drawable.Drawable;
 import android.graphics.Typeface;
@@ -63,6 +65,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_FONT = 73;
     private static final int REQ_ANALYST = 74;
     private static final int REQ_TELEPROMPTER = 75;
+    private static final int REQ_WATERMARK = 76;
     private static final int BG = Color.rgb(9, 15, 29);
     private static final int PANEL = Color.rgb(20, 30, 49);
     private static final int CYAN = Color.rgb(44, 216, 221);
@@ -75,7 +78,14 @@ public final class MainActivity extends Activity {
     private final List<Caption> captions = new ArrayList<>();
     private List<MediaCue> activeMedia=new ArrayList<>();
     private MediaCue shownMedia;
-    private ImageView mediaImage;
+    private ImageView mediaImage,watermarkPreview;
+    private FrameLayout watermarkPreviewArea;
+    private boolean watermarkEnabled=false;
+    private int watermarkCorner=3,watermarkSize=24,watermarkOpacity=82;
+    private SeekBar watermarkSizeSeek,watermarkOpacitySeek;
+    private Spinner watermarkCornerSpinner;
+    private CheckBox watermarkSwitch;
+    private TextView watermarkSizeLabel,watermarkOpacityLabel,watermarkStatus;
     private final VideoExporter exporter = new VideoExporter();
     private ExoPlayer player;
     private Uri videoUri, musicUri, completedUri;
@@ -187,6 +197,16 @@ public final class MainActivity extends Activity {
         subp.leftMargin = dp(14); subp.rightMargin = dp(14); subp.bottomMargin = dp(60);
         previewFrame.addView(previewCaption, subp);
         previewCaption.setVisibility(View.INVISIBLE);
+        watermarkPreviewArea=new FrameLayout(this);
+        watermarkPreviewArea.setClickable(false);
+        watermarkPreviewArea.setFocusable(false);
+        watermarkPreview=new ImageView(this);
+        watermarkPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        watermarkPreviewArea.addView(watermarkPreview);
+        watermarkPreview.setVisibility(View.GONE);
+        FrameLayout.LayoutParams watermarkPreviewFrameParams=new FrameLayout.LayoutParams(-1,-1);
+        previewFrame.addView(watermarkPreviewArea,watermarkPreviewFrameParams);
+        previewFrame.addOnLayoutChangeListener((view,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom)->refreshWatermarkPreview());
         timelineLabel = label("00:00.0 / 00:00.0", 12, CYAN, true);
         timelineLabel.setGravity(Gravity.CENTER);
         previewPanel.addView(timelineLabel);
@@ -298,6 +318,74 @@ public final class MainActivity extends Activity {
         sourceBox.addView(label("Dica para a revelação: ajuste a entrada da música para 00:11.0. O ducking usa os intervalos das legendas, portanto gere as legendas offline antes de exportar. Os efeitos de mixagem não são ouvidos na prévia do editor: confira o MP4 exportado.",12,MUTED,false));
         updateMixLabels();
         gap(root, 13);
+
+        LinearLayout watermarkBox=panel(root);
+        title(watermarkBox,"✦ MARCA D'ÁGUA • PODER AZUL");
+        watermarkBox.addView(label("Coloque sua imagem PNG transparente no canto do vídeo. Ela aparece na prévia e fica gravada no MP4 exportado.",12,MUTED,false));
+        gap(watermarkBox,7);
+        watermarkBox.addView(action("+ Escolher imagem PNG / JPG / WebP",false,
+                ()->openDocument("image/*",REQ_WATERMARK)));
+        watermarkStatus=label("Nenhuma marca d'água selecionada",12,MUTED,false);
+        watermarkBox.addView(watermarkStatus);
+        watermarkBox.addView(action("Remover marca d'água",false,this::removeWatermark));
+        watermarkSwitch=new CheckBox(this);
+        watermarkSwitch.setText("Ativar marca d'água no vídeo final");
+        watermarkSwitch.setTextColor(LIGHT);
+        watermarkSwitch.setButtonTintList(android.content.res.ColorStateList.valueOf(CYAN));
+        watermarkSwitch.setChecked(watermarkEnabled);
+        watermarkSwitch.setOnCheckedChangeListener((box,enabled)->{
+            watermarkEnabled=enabled;
+            refreshWatermarkPreview();
+            saveProject();
+        });
+        watermarkBox.addView(watermarkSwitch);
+        gap(watermarkBox,7);
+        watermarkBox.addView(label("POSIÇÃO NO VÍDEO",12,CYAN,true));
+        watermarkCornerSpinner=new Spinner(this);
+        watermarkCornerSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"Superior esquerdo","Superior direito","Inferior esquerdo","Inferior direito"}));
+        watermarkBox.addView(watermarkCornerSpinner);
+        watermarkCornerSpinner.setSelection(watermarkCorner);
+        watermarkCornerSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
+                watermarkCorner=position;refreshWatermarkPreview();saveProject();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent){}
+        });
+        watermarkSizeLabel=label("",12,LIGHT,true);
+        watermarkBox.addView(watermarkSizeLabel);
+        watermarkSizeSeek=new SeekBar(this);
+        watermarkSizeSeek.setMax(33);
+        watermarkSizeSeek.setProgress(watermarkSize-12);
+        watermarkSizeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean fromUser){
+                watermarkSize=12+value;
+                refreshWatermarkPreview();
+                if(fromUser)saveProject();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar){}
+            @Override public void onStopTrackingTouch(SeekBar bar){}
+        });
+        watermarkBox.addView(watermarkSizeSeek);
+        watermarkOpacityLabel=label("",12,LIGHT,true);
+        watermarkBox.addView(watermarkOpacityLabel);
+        watermarkOpacitySeek=new SeekBar(this);
+        watermarkOpacitySeek.setMax(85);
+        watermarkOpacitySeek.setProgress(watermarkOpacity-15);
+        watermarkOpacitySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar bar,int value,boolean fromUser){
+                watermarkOpacity=15+value;
+                refreshWatermarkPreview();
+                if(fromUser)saveProject();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar){}
+            @Override public void onStopTrackingTouch(SeekBar bar){}
+        });
+        watermarkBox.addView(watermarkOpacitySeek);
+        watermarkBox.addView(label("Dica: use uma PNG transparente do Poder Azul. Evite marcas muito grandes que escondam o rosto ou as legendas.",12,MUTED,false));
+        refreshWatermarkPreview();
+        gap(root,13);
 
         LinearLayout trimBox = panel(root);
         title(trimBox, "02  CORTE E FORMATO");
@@ -472,7 +560,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.8 TELEPROMPTER  •  Gravação com roteiro  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.9 MARCA D'ÁGUA  •  Logo no MP4  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -490,12 +578,74 @@ public final class MainActivity extends Activity {
         startActivityForResult(new Intent(this,TeleprompterActivity.class),REQ_TELEPROMPTER);
     }
 
+    private void removeWatermark(){
+        File file=WatermarkOverlay.asset(this);
+        if(file.exists()&&!file.delete()){
+            error("Não foi possível remover o arquivo da marca d'água.");
+            return;
+        }
+        watermarkEnabled=false;
+        if(watermarkSwitch!=null)watermarkSwitch.setChecked(false);
+        if(watermarkPreview!=null)watermarkPreview.setImageDrawable(null);
+        refreshWatermarkPreview();
+        saveProject();
+        info("Marca d'água removida do projeto.");
+    }
+
+    private void refreshWatermarkPreview(){
+        if(watermarkSizeLabel!=null)watermarkSizeLabel.setText("Tamanho: "+watermarkSize+"% da largura");
+        if(watermarkOpacityLabel!=null)watermarkOpacityLabel.setText("Opacidade: "+watermarkOpacity+"%");
+        boolean present=WatermarkOverlay.hasAsset(this);
+        if(watermarkStatus!=null)watermarkStatus.setText(present
+                ?"Logo salvo no aparelho (PNG interno)": "Nenhum logo selecionado");
+        if(watermarkPreview==null||watermarkPreviewArea==null)return;
+        if(!present||!watermarkEnabled){
+            watermarkPreview.setVisibility(View.GONE);
+            watermarkPreview.setImageDrawable(null);
+            return;
+        }
+        final File asset=WatermarkOverlay.asset(this);
+        Bitmap image=BitmapFactory.decodeFile(asset.getAbsolutePath());
+        if(image==null){watermarkPreview.setVisibility(View.GONE);return;}
+        int bw=image.getWidth(),bh=image.getHeight();
+        image.recycle();
+        int width=watermarkPreviewArea.getWidth(),height=watermarkPreviewArea.getHeight();
+        if(width<=0||height<=0){
+            watermarkPreviewArea.post(this::refreshWatermarkPreview);
+            return;
+        }
+        int videoWidth=Math.max(1,Math.min(width,Math.round(height*9f/16f)));
+        int videoHeight=Math.max(1,Math.min(height,Math.round(width*16f/9f)));
+        android.graphics.RectF pixels=WatermarkOverlay.position(bw,bh,watermarkSize,watermarkCorner);
+        int imageWidth=Math.max(1,Math.round(videoWidth*pixels.width()/720f));
+        int imageHeight=Math.max(1,Math.round(videoHeight*pixels.height()/1280f));
+        int left=Math.round((width-videoWidth)/2f+videoWidth*pixels.left/720f);
+        int top=Math.round((height-videoHeight)/2f+videoHeight*pixels.top/1280f);
+        FrameLayout.LayoutParams params=new FrameLayout.LayoutParams(imageWidth,imageHeight,Gravity.TOP|Gravity.LEFT);
+        params.leftMargin=left;params.topMargin=top;
+        watermarkPreview.setLayoutParams(params);
+        watermarkPreview.setImageURI(Uri.fromFile(asset));
+        watermarkPreview.setAlpha(watermarkOpacity/100f);
+        watermarkPreview.setVisibility(View.VISIBLE);
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
         catch (SecurityException ignored) { }
+        if(requestCode == REQ_WATERMARK){
+            try {
+                WatermarkOverlay.install(this,uri);
+                watermarkEnabled=true;
+                if(watermarkSwitch!=null)watermarkSwitch.setChecked(true);
+                refreshWatermarkPreview();
+                saveProject();
+                info("Marca d'água configurada e pronta para exportar!");
+            }catch(Exception ex){error("Marca d'água: "+ex.getMessage());}
+            return;
+        }
         if(requestCode == REQ_TELEPROMPTER) {
             videoUri=uri;
             durationMs=0;trimStartMs=0;trimEndMs=0;
@@ -914,6 +1064,7 @@ public final class MainActivity extends Activity {
                     new ArrayList<>(captions), new ArrayList<>(MediaCueStore.load(this,videoUri)),
                     captionStyle, captionAnimation, captionFont, captionSize, captionPosition,
                     voiceVolumePercent,musicVolumePercent,musicStartMs,musicDucking,duckVolumePercent,
+                    watermarkEnabled,watermarkCorner,watermarkSize,watermarkOpacity,
                     new VideoExporter.Listener() {
                         @Override public void success(File mp4) {
                             info("Finalizando o MP4 na galeria...");
@@ -1023,6 +1174,10 @@ public final class MainActivity extends Activity {
         e.putLong("music_delay",musicStartMs);
         e.putBoolean("auto_duck",musicDucking);
         e.putInt("duck_gain",duckVolumePercent);
+        e.putBoolean("watermark_enabled",watermarkEnabled);
+        e.putInt("watermark_corner",watermarkCorner);
+        e.putInt("watermark_size",watermarkSize);
+        e.putInt("watermark_opacity",watermarkOpacity);
         e.putInt("caption_style", captionStyle); e.putInt("caption_animation", captionAnimation);
         e.putInt("caption_font", captionFont); e.putInt("caption_size", captionSize);
         e.putInt("caption_position", captionPosition);
@@ -1038,6 +1193,15 @@ public final class MainActivity extends Activity {
             musicStartMs=Math.max(0,p.getLong("music_delay",0));
             musicDucking=p.getBoolean("auto_duck",true);
             duckVolumePercent=Math.max(0,Math.min(100,p.getInt("duck_gain",28)));
+            watermarkEnabled=p.getBoolean("watermark_enabled",false)&&WatermarkOverlay.hasAsset(this);
+            watermarkCorner=Math.max(0,Math.min(3,p.getInt("watermark_corner",3)));
+            watermarkSize=Math.max(12,Math.min(45,p.getInt("watermark_size",24)));
+            watermarkOpacity=Math.max(15,Math.min(100,p.getInt("watermark_opacity",82)));
+            if(watermarkSwitch!=null)watermarkSwitch.setChecked(watermarkEnabled);
+            if(watermarkCornerSpinner!=null)watermarkCornerSpinner.setSelection(watermarkCorner);
+            if(watermarkSizeSeek!=null)watermarkSizeSeek.setProgress(watermarkSize-12);
+            if(watermarkOpacitySeek!=null)watermarkOpacitySeek.setProgress(watermarkOpacity-15);
+            refreshWatermarkPreview();
             if(voiceVolumeSeek!=null)voiceVolumeSeek.setProgress(voiceVolumePercent);
             if(musicVolumeSeek!=null)musicVolumeSeek.setProgress(musicVolumePercent);
             if(musicStartSeek!=null)musicStartSeek.setProgress((int)Math.min(musicStartSeek.getMax(),musicStartMs/100L));
