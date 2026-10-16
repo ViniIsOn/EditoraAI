@@ -197,7 +197,7 @@ public final class OfflineTranscriber {
                 hasTimestamps = true;
                 long from = Math.round(item.optDouble("start", 0) * 1000);
                 long to = Math.max(from + 120, Math.round(item.optDouble("end", from / 1000.0 + 0.3) * 1000));
-                if (start >= 0 && (from - end > 650 || words >= 7 || to - start >= 3600)) flush();
+                if (start >= 0 && (from - end > 850 || words >= 9 || to - start >= 4300)) flush();
                 if (start < 0) start = from;
                 if (text.length() > 0) text.append(' ');
                 text.append(word);
@@ -211,12 +211,12 @@ public final class OfflineTranscriber {
                 if (!fallback.isEmpty()) {
                     flush();
                     String[] tokens = fallback.split("\\s+");
-                    int parts = Math.max(1, (tokens.length + 6) / 7);
+                    int parts = Math.max(1, (tokens.length + 8) / 9);
                     long fromMs = Math.max(0, lastResultMs);
                     long untilMs = Math.max(audioEndMs, fromMs + parts * 450L);
                     for (int segment = 0; segment < parts; segment++) {
-                        int lo = segment * 7;
-                        int hi = Math.min(tokens.length, lo + 7);
+                        int lo = segment * 9;
+                        int hi = Math.min(tokens.length, lo + 9);
                         StringBuilder phrase = new StringBuilder();
                         for (int k = lo; k < hi; k++) {
                             if (phrase.length() > 0) phrase.append(' ');

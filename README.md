@@ -1,30 +1,40 @@
-# EditoraAI v0.9 — Marca d'água Poder Azul
+# EditoraAI v1.0 — SMART EDIT (Pausas, FX anime, legendas e roteiro Sonic)
 
-Esta atualização mantém os recursos anteriores: gravação com câmera frontal e teleprompter, mixagem de voz e música, Vosk PT-BR offline, sobreposições, GIFs, legendas, legendas animadas, efeitos e exportação MP4 vertical.
+## O que esta versão faz de verdade
 
-## Marca d'água personalizada
+Continua tudo que existia na v0.9: câmera frontal com teleprompter, mixagem de voz/música, Vosk PT-BR, edições de legendas, marca d'água personalizada PNG, GIFs, imagens e efeitos sonoros.
 
-- Na tela principal: seção **MARCA D'ÁGUA • PODER AZUL**.
-- Escolher imagem na galeria/documentos: PNG com fundo transparente é recomendado, mas JPG e WebP estáticos também funcionam.
-- A imagem escolhida é copiada e convertida para PNG **no armazenamento privado do app**; não precisa selecioná-la a cada gravação.
-- Mostra a marca d'água na **prévia do vídeo** e aplica o mesmo tamanho/posição ao MP4 exportado.
-- Quatro posições: superior esquerda, superior direita, inferior esquerda e inferior direita.
-- Tamanho de **12% a 45% da largura**, respeitando altura máxima de 32% do vídeo para não cobrir tudo.
-- Transparência de **15% a 100%**.
-- Opção ligar/desligar e remover o logo salvo; se não houver logo selecionado, nenhum watermark é exportado.
-- O recurso usa Media3 BitmapOverlay para compor a imagem em todas as frames do vídeo, sem recodificação extra separada.
-- Os ajustes do projeto são persistidos nas preferências. Alterar o vídeo não apaga o logo.
+### 1. Cortes inteligentes com confirmação
 
-## Dica para o Kwai
+1. Importe ou grave o vídeo.
+2. Gere as **legendas offline** no painel Legendas com IA. Revise e corrija erros.
+3. Em **Cortes Inteligentes**, toque **Detectar pausas e revisar cortes**.
+4. O app detecta intervalos **sem palavras reconhecidas** com aproximadamente 0,9 segundo ou mais e hesitações isoladas como "ahn", "eh" e "hmm" quando reconhecidas pelo Vosk.
+5. Confira horários das sugestões (o botão Ouvir vídeo inicia na primeira sugestão), marque/desmarque e toque Aplicar seleção.
+6. Na exportação, o app **monta uma sequência de trechos preservados**, com jump cuts, e adapta a linha do tempo de legendas, música e efeitos sonoros. As imagens e legendas são renderizadas usando os tempos originais em cada clipe.
+7. **Desfazer todos os cortes** apaga a seleção, não o arquivo original.
 
-Use PNG com fundo transparente, canto inferior direito, tamanho 18%–24% e opacidade 70%–85%. Evite esconder o rosto ou a legenda. Teste numa gravação de 10 segundos; a prévia mostra a posição aproximada, mas o MP4 é o resultado definitivo.
+Limites: até 15 cortes aceitos, para evitar excesso de memória/custo de renderização. Os cortes são baseados nas palavras que o Vosk reconheceu, **não são um detector acústico de silêncio**. Um ruído ou uma palavra mal reconhecida pode causar corte incorreto. Revisão manual é indispensável. Hesitações dentro de frases completas podem não ser detectadas. A prévia continua mostrando o vídeo original; somente o MP4 final é remontado.
 
-## Limitações
+### 2. FX anime e transições gráficas
 
-- Aceita imagens estáticas PNG/JPG/WebP; GIFs em movimento não são marcas d'água nesta versão.
-- Logos grandes podem bloquear legendas. A imagem é redimensionada para no máximo 1500px durante a importação e limitada a 8MB no arquivo original.
-- Em vídeos que já tenham logo (por exemplo um MP4 exportado do InShot com logo), adicionar outra marca resulta em **duas marcas d'água**. Importe a gravação original sem logo se quiser uma única marca.
-- O conteúdo e a imagem não são enviados para um servidor para aplicação da marca d'água.
-- APK debug separado **com.vini.editoraai.marca** para não desinstalar versões antigas; ao instalar precisa redownload do modelo Vosk para uso offline.
+Escolha **Flash anime**, **Linhas de velocidade**, **Glitch colorido** ou **Explosão pop**. As animações aparecem brevemente nas entradas dos segmentos cortados e em acentos visuais a cada aproximadamente 9 segundos. Esses efeitos são sobreposições visuais sobre o vídeo, não um dissolve/crossfade entre gravações nem montagem de múltiplas câmeras.
 
-Compilação Android JDK17/SDK35 Gradle 8.10.2, CameraX 1.4.2, Media3 1.8.0. Compilar não substitui o teste em aparelho real.
+### 3. Legendas com dicionário personalizado
+
+- Transcrição ainda usa o modelo local Vosk (~31 MB). Segmentação de frases passou de 7 para até 9 palavras, com pausas um pouco mais naturais.
+- O pós-processamento inclui pontuação em pausas maiores e um dicionário editável de substituições, com nomes como **Sonic, Rumble, Vector, Eggman, Poder Azul**.
+- Abra **Corrigir nomes: Sonic, Vector, Poder Azul...**, inclua linhas no formato `palavra reconhecida = palavra correta` e salve.
+- O reconhecimento acústico não virou um modelo de IA superior: nomes e frases ainda podem ser reconhecidos incorretamente, e o usuário deve revisar as legendas antes de aplicar cortes.
+
+### 4. Teleprompter sem esperar o texto antigo
+
+O gravador começa com o roteiro vazio na instalação inicial. Toque **Escolher roteiro pronto** e selecione **Curiosidades Sonic Rumble**, **Revelação Poder Azul** ou **Em branco**. O botão **Próxima fala** avança para o próximo parágrafo imediatamente, sem esperar a rolagem; funciona mesmo enquanto grava. Você também pode editar/colar qualquer texto. A gravação não mostra o texto.
+
+## Instalação
+
+APK debug tem applicationId **com.vini.editoraai.smartedit**, separada das versões anteriores para preservar dados dos protótipos. Os dados do teleprompter e modelo de português são próprios de cada instalação. O APK é compilado em GitHub Actions (JDK17, Android SDK35, Media3 1.8.0, CameraX1.4.2).
+
+**Teste recomendado:** importe uma gravação de ~20 segundos com fala + duas pausas de 1,5s. Gere legendas, detecte cortes, exporte com sem efeitos, compare com o original e só então teste Flash anime. Veja se a voz e música não ficam fora de sincronia.
+
+**Privacidade:** transcrição e cortes são locais; não enviam o vídeo para um servidor. Publicar seu rosto é opcional e deve ser uma decisão confortável e segura (sem endereço, escola ou dados pessoais visíveis).

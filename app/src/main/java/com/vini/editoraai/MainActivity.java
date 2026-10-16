@@ -78,6 +78,7 @@ public final class MainActivity extends Activity {
     private final List<Caption> captions = new ArrayList<>();
     private final List<SmartCuts.Cut> selectedCuts = new ArrayList<>();
     private int visualFxMode=0;
+    private String correctionGlossary=CaptionPolisher.DEFAULT_GLOSSARY;
     private Spinner visualFxSpinner;
     private TextView smartCutStatus;
     private List<MediaCue> activeMedia=new ArrayList<>();
@@ -462,6 +463,9 @@ public final class MainActivity extends Activity {
         captionsBox.addView(action("▶ Ver legendas na prévia", false, this::previewFirstCaption));
         gap(captionsBox, 8);
         captionsBox.addView(action("Editar legendas", false, this::openCaptionEditor));
+        gap(captionsBox, 7);
+        captionsBox.addView(action("📝 Corrigir nomes: Sonic, Vector, Poder Azul...",false,
+                this::editGlossary));
         gap(captionsBox, 8);
         captionsBox.addView(action("+ Adicionar legenda manual", false, this::addManualCaption));
         gap(captionsBox, 13);
@@ -590,7 +594,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.9 MARCA D'ÁGUA  •  Logo no MP4  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v1.0 SMART EDIT  •  Cortes, efeitos e roteiros  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -777,6 +781,34 @@ public final class MainActivity extends Activity {
     }
 
     /** O download do modelo é opt-in; nada do áudio sai do aparelho na transcrição local. */
+    private void editGlossary(){
+        if(busy)return;
+        EditText input=new EditText(this);
+        input.setText(correctionGlossary);
+        input.setTextSize(15);
+        input.setMinLines(7);
+        input.setGravity(Gravity.TOP);
+        input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        LinearLayout box=new LinearLayout(this);
+        box.setPadding(dp(18),dp(6),dp(18),0);
+        box.addView(input,new LinearLayout.LayoutParams(-1,-2));
+        new AlertDialog.Builder(this).setTitle("Dicionário das legendas")
+                .setMessage("Uma substituição por linha: palavra reconhecida = texto correto. A IA offline continua sendo Vosk; isso corrige nomes após o reconhecimento, não o som da voz.")
+                .setView(box)
+                .setPositiveButton("Salvar e corrigir legendas",(dialog,which)->{
+                    correctionGlossary=input.getText().toString();
+                    if(!captions.isEmpty()){
+                        List<Caption> improved=CaptionPolisher.polish(captions,correctionGlossary);
+                        captions.clear();captions.addAll(improved);
+                        updateCaptionsLabel();
+                    }
+                    selectedCuts.clear();updateSmartCutStatus();
+                    saveProject();
+                    info("Dicionário salvo e texto revisado. Confira as frases reconhecidas.");
+                })
+                .setNegativeButton("Cancelar",null).show();
+    }
+
     private void requestOfflineTranscription() {
         if (!ensureVideo() || busy) return;
         if (OfflineModelManager.isInstalled(this)) {
@@ -837,7 +869,9 @@ public final class MainActivity extends Activity {
                                 .setPositiveButton("Entendi", null).show();
                         return;
                     }
-                    captions.clear(); captions.addAll(found);
+                    captions.clear();
+                    captions.addAll(CaptionPolisher.polish(found,correctionGlossary));
+                    selectedCuts.clear();updateSmartCutStatus();
                     sortCaptions(); updateCaptionsLabel(); saveProject(); setBusy(false);
                     previewFirstCaption();
                     captionStatus("✅ " + found.size() + " LEGENDAS CRIADAS! A prévia começou no primeiro trecho. Revise em Editar legendas antes de exportar.");
@@ -1264,6 +1298,7 @@ public final class MainActivity extends Activity {
         e.putInt("watermark_size",watermarkSize);
         e.putInt("watermark_opacity",watermarkOpacity);
         e.putInt("visual_fx_mode",visualFxMode);
+        e.putString("caption_glossary",correctionGlossary);
         org.json.JSONArray cutsJson=new org.json.JSONArray();
         for(SmartCuts.Cut item:selectedCuts){
             org.json.JSONObject obj=new org.json.JSONObject();
@@ -1292,6 +1327,7 @@ public final class MainActivity extends Activity {
             watermarkCorner=Math.max(0,Math.min(3,p.getInt("watermark_corner",3)));
             watermarkSize=Math.max(12,Math.min(45,p.getInt("watermark_size",24)));
             watermarkOpacity=Math.max(15,Math.min(100,p.getInt("watermark_opacity",82)));
+            correctionGlossary=p.getString("caption_glossary",CaptionPolisher.DEFAULT_GLOSSARY);
             visualFxMode=Math.max(0,Math.min(VisualFxOverlay.MODES.length-1,p.getInt("visual_fx_mode",0)));
             if(visualFxSpinner!=null)visualFxSpinner.setSelection(visualFxMode);
             selectedCuts.clear();
