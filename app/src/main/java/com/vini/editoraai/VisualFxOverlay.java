@@ -40,7 +40,7 @@ public final class VisualFxOverlay extends BitmapOverlay {
     @Override public OverlaySettings getOverlaySettings(long timeUs){return settings;}
     @Override public Bitmap getBitmap(long timeUs){
         long timeMs=timeUs/1000L;
-        long step=timeMs/33333;
+        long step=timeMs/33;
         if(frame!=null&&lastStep==step)return frame;
         if(frame==null)frame=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
         lastStep=step;

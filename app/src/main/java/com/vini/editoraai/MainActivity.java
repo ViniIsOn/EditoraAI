@@ -1150,8 +1150,7 @@ public final class MainActivity extends Activity {
             checked[i]=true;
         }
         new AlertDialog.Builder(this)
-            .setTitle("Revisar "+count+" possíveis cortes")
-            .setMessage("Marque só as pausas que realmente quer remover. Ouça esses segundos na prévia antes de confirmar. O áudio original permanece salvo.")
+            .setTitle("Revisar cortes • marque só o silêncio real")
             .setMultiChoiceItems(labels,checked,(dialog,index,value)->checked[index]=value)
             .setPositiveButton("Aplicar seleção",(d,w)->{
                 selectedCuts.clear();
