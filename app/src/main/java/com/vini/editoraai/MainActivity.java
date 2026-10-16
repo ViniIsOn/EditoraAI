@@ -21,6 +21,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -80,7 +81,12 @@ public final class MainActivity extends Activity {
     private String groqKey = ""; // memory-only, never saved to disk
     private long durationMs = 0, trimStartMs = 0, trimEndMs = 0;
     private boolean busy = false;
-    private SeekBar startSeek, endSeek, timelineSeek;
+    private SeekBar startSeek, endSeek, timelineSeek, voiceVolumeSeek, musicVolumeSeek, musicStartSeek, duckVolumeSeek;
+    private TextView voiceVolumeLabel, musicVolumeLabel, musicStartLabel, duckVolumeLabel;
+    private int voiceVolumePercent=100, musicVolumePercent=26, duckVolumePercent=28;
+    private long musicStartMs=0;
+    private boolean musicDucking=true;
+    private CheckBox duckingSwitch;
     private int captionStyle = 0, captionAnimation = 0, captionFont = 0, captionSize = 100, captionPosition = 0;
     private boolean timelineTouch = false;
     private LinearLayout captionChips;
@@ -213,6 +219,77 @@ public final class MainActivity extends Activity {
         sourceBox.addView(action("Remover música", false, () -> {
             musicUri = null; musicLabel.setText("Sem música extra"); saveProject();
         }));
+        gap(sourceBox, 12);
+        sourceBox.addView(label("🎚 MIXAGEM INTELIGENTE", 15, CYAN, true));
+        sourceBox.addView(label("Controle o volume da sua voz e da trilha, defina quando a música começa e reduza o jazz automaticamente durante a fala. O resultado é aplicado no MP4 exportado.",12,MUTED,false));
+        gap(sourceBox, 7);
+        voiceVolumeLabel=label("",12,LIGHT,true);
+        sourceBox.addView(voiceVolumeLabel);
+        voiceVolumeSeek=new SeekBar(this);
+        voiceVolumeSeek.setMax(180);voiceVolumeSeek.setProgress(voiceVolumePercent);
+        voiceVolumeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar b,int progress,boolean user){
+                voiceVolumePercent=progress;
+                updateMixLabels();
+                if(user)saveProject();
+            }
+            @Override public void onStartTrackingTouch(SeekBar b){}
+            @Override public void onStopTrackingTouch(SeekBar b){}
+        });
+        sourceBox.addView(voiceVolumeSeek);
+        musicVolumeLabel=label("",12,LIGHT,true);
+        sourceBox.addView(musicVolumeLabel);
+        musicVolumeSeek=new SeekBar(this);
+        musicVolumeSeek.setMax(100);musicVolumeSeek.setProgress(musicVolumePercent);
+        musicVolumeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar b,int progress,boolean user){
+                musicVolumePercent=progress;
+                updateMixLabels();
+                if(user)saveProject();
+            }
+            @Override public void onStartTrackingTouch(SeekBar b){}
+            @Override public void onStopTrackingTouch(SeekBar b){}
+        });
+        sourceBox.addView(musicVolumeSeek);
+        musicStartLabel=label("",12,LIGHT,true);
+        sourceBox.addView(musicStartLabel);
+        musicStartSeek=new SeekBar(this);
+        musicStartSeek.setMax(600);
+        musicStartSeek.setProgress(0);
+        musicStartSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar b,int progress,boolean user){
+                musicStartMs=progress*100L;
+                updateMixLabels();
+                if(user)saveProject();
+            }
+            @Override public void onStartTrackingTouch(SeekBar b){}
+            @Override public void onStopTrackingTouch(SeekBar b){}
+        });
+        sourceBox.addView(musicStartSeek);
+        duckingSwitch=new CheckBox(this);
+        duckingSwitch.setText("Reduzir música enquanto eu falo (usa legendas)");
+        duckingSwitch.setTextColor(LIGHT);
+        duckingSwitch.setButtonTintList(android.content.res.ColorStateList.valueOf(CYAN));
+        duckingSwitch.setChecked(musicDucking);
+        duckingSwitch.setOnCheckedChangeListener((button,checked)->{
+            musicDucking=checked;updateMixLabels();saveProject();
+        });
+        sourceBox.addView(duckingSwitch);
+        duckVolumeLabel=label("",12,LIGHT,true);
+        sourceBox.addView(duckVolumeLabel);
+        duckVolumeSeek=new SeekBar(this);
+        duckVolumeSeek.setMax(100);duckVolumeSeek.setProgress(duckVolumePercent);
+        duckVolumeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar b,int progress,boolean user){
+                duckVolumePercent=progress;updateMixLabels();
+                if(user)saveProject();
+            }
+            @Override public void onStartTrackingTouch(SeekBar b){}
+            @Override public void onStopTrackingTouch(SeekBar b){}
+        });
+        sourceBox.addView(duckVolumeSeek);
+        sourceBox.addView(label("Dica para a revelação: ajuste a entrada da música para 00:11.0. O ducking usa os intervalos das legendas, portanto gere as legendas offline antes de exportar. Os efeitos de mixagem não são ouvidos na prévia do editor: confira o MP4 exportado.",12,MUTED,false));
+        updateMixLabels();
         gap(root, 13);
 
         LinearLayout trimBox = panel(root);
@@ -388,7 +465,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.6 NUVEM  •  GIFs + Google + YouTube  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.7 MIXAGEM  •  Volume, entrada e ducking  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -776,6 +853,18 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void updateMixLabels() {
+        if(voiceVolumeLabel!=null)voiceVolumeLabel.setText("🎤 Voz do vídeo: "+voiceVolumePercent+"%");
+        if(musicVolumeLabel!=null)musicVolumeLabel.setText("♫ Música de fundo: "+musicVolumePercent+"%");
+        if(musicStartLabel!=null)musicStartLabel.setText(String.format(Locale.getDefault(),
+                "⏱ Música começa em %02d:%02d.%01d",musicStartMs/60000,
+                (musicStartMs/1000)%60,(musicStartMs%1000)/100));
+        if(duckVolumeLabel!=null)duckVolumeLabel.setText("Música durante a fala: "+
+                duckVolumePercent+"% do volume escolhido"+
+                (musicDucking?"":" • redução desligada"));
+        if(duckVolumeSeek!=null)duckVolumeSeek.setEnabled(musicDucking);
+    }
+
     private void startExport() {
         if (!ensureVideo() || busy) return;
         if (trimEndMs <= trimStartMs) { error("Selecione um intervalo de vídeo válido."); return; }
@@ -783,11 +872,16 @@ public final class MainActivity extends Activity {
         setBusy(true);
         progress.setVisibility(View.VISIBLE);
         progress.setProgress(0);
-        info("Preparando renderização com áudio e legendas...");
+        info("Preparando MP4 com Mixagem Inteligente...");
+        if(musicDucking && musicUri!=null && captions.isEmpty()) {
+            Toast.makeText(this,"Não há legendas: o volume da música ficará constante. Gere as legendas para baixar durante a fala.",Toast.LENGTH_LONG).show();
+        }
         try {
             exporter.start(getApplicationContext(), videoUri, musicUri, trimStartMs, trimEndMs,
                     new ArrayList<>(captions), new ArrayList<>(MediaCueStore.load(this,videoUri)),
-                    captionStyle, captionAnimation, captionFont, captionSize, captionPosition, new VideoExporter.Listener() {
+                    captionStyle, captionAnimation, captionFont, captionSize, captionPosition,
+                    voiceVolumePercent,musicVolumePercent,musicStartMs,musicDucking,duckVolumePercent,
+                    new VideoExporter.Listener() {
                         @Override public void success(File mp4) {
                             info("Finalizando o MP4 na galeria...");
                             work.execute(() -> {
@@ -872,6 +966,12 @@ public final class MainActivity extends Activity {
     private void refreshTrims() {
         if (durationMs <= 0) return;
         if (timelineSeek != null) timelineSeek.setMax((int) Math.max(1, durationMs / 100));
+        if (musicStartSeek != null) {
+            musicStartSeek.setMax((int)Math.max(1,Math.min(durationMs,60*60*1000L)/100L));
+            if(musicStartMs>durationMs)musicStartMs=0;
+            musicStartSeek.setProgress((int)(musicStartMs/100L));
+            updateMixLabels();
+        }
         startSeek.setMax((int) Math.max(1, durationMs/100));
         endSeek.setMax((int) Math.max(1, durationMs/100));
         startSeek.setProgress((int) (trimStartMs/100));
@@ -884,6 +984,11 @@ public final class MainActivity extends Activity {
         e.putString("video", videoUri == null ? "" : videoUri.toString());
         e.putString("music", musicUri == null ? "" : musicUri.toString());
         e.putLong("start", trimStartMs); e.putLong("end", trimEndMs);
+        e.putInt("voice_gain",voiceVolumePercent);
+        e.putInt("music_gain",musicVolumePercent);
+        e.putLong("music_delay",musicStartMs);
+        e.putBoolean("auto_duck",musicDucking);
+        e.putInt("duck_gain",duckVolumePercent);
         e.putInt("caption_style", captionStyle); e.putInt("caption_animation", captionAnimation);
         e.putInt("caption_font", captionFont); e.putInt("caption_size", captionSize);
         e.putInt("caption_position", captionPosition);
@@ -893,6 +998,17 @@ public final class MainActivity extends Activity {
     private void restoreProject() {
         SharedPreferences p = getSharedPreferences("editor", MODE_PRIVATE);
         try {
+            voiceVolumePercent=Math.max(0,Math.min(180,p.getInt("voice_gain",100)));
+            musicVolumePercent=Math.max(0,Math.min(100,p.getInt("music_gain",26)));
+            musicStartMs=Math.max(0,p.getLong("music_delay",0));
+            musicDucking=p.getBoolean("auto_duck",true);
+            duckVolumePercent=Math.max(0,Math.min(100,p.getInt("duck_gain",28)));
+            if(voiceVolumeSeek!=null)voiceVolumeSeek.setProgress(voiceVolumePercent);
+            if(musicVolumeSeek!=null)musicVolumeSeek.setProgress(musicVolumePercent);
+            if(musicStartSeek!=null)musicStartSeek.setProgress((int)Math.min(musicStartSeek.getMax(),musicStartMs/100L));
+            if(duckingSwitch!=null)duckingSwitch.setChecked(musicDucking);
+            if(duckVolumeSeek!=null)duckVolumeSeek.setProgress(duckVolumePercent);
+            updateMixLabels();
             captionStyle = CaptionStyle.safeStyle(p.getInt("caption_style", 0));
             captionAnimation = CaptionStyle.safeAnimation(p.getInt("caption_animation", 0));
             captionFont = CaptionStyle.safeFont(p.getInt("caption_font", 0));

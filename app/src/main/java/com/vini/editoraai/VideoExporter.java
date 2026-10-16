@@ -1,6 +1,7 @@
 package com.vini.editoraai;
 
 import android.content.Context;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 
 import androidx.media3.common.Effect;
@@ -39,7 +40,8 @@ public final class VideoExporter {
 
     public void start(Context context, Uri videoUri, Uri musicUri, long startMs, long endMs,
                       List<Caption> captions, List<MediaCue> mediaCues, int style, int animation, int font,
-                      int size, int position, Listener callback) {
+                      int size, int position, int voiceVolume, int musicVolume, long musicDelay,
+                      boolean ducking, int duckPercent, Listener callback) {
         output = new File(context.getCacheDir(), "editora_export_" + System.currentTimeMillis() + ".mp4");
         if (output.exists()) output.delete();
 
@@ -69,15 +71,25 @@ public final class VideoExporter {
                     animation, font, size, position));
         }
         if (!overlays.isEmpty()) videoEffects.add(new OverlayEffect(overlays));
+        List<androidx.media3.common.audio.AudioProcessor> voiceFx = new ArrayList<>();
+        if(voiceVolume!=100){
+            voiceFx.add(new SmartMixAudioProcessor(voiceVolume/100f,voiceVolume/100f,
+                    false,0L,startMs,null,false));
+        }
         EditedMediaItem editedVideo = new EditedMediaItem.Builder(video)
-                .setEffects(new Effects(Collections.emptyList(), videoEffects)).build();
+                .setEffects(new Effects(voiceFx, videoEffects)).build();
         EditedMediaItemSequence main = new EditedMediaItemSequence.Builder(editedVideo).build();
 
         ArrayList<EditedMediaItemSequence> sequences=new ArrayList<>();
         sequences.add(main);
-        if (musicUri != null) {
-            EditedMediaItem audioItem=new EditedMediaItem.Builder(MediaItem.fromUri(musicUri)).build();
-            sequences.add(new EditedMediaItemSequence.Builder(audioItem).setIsLooping(true).build());
+        if(musicUri != null && musicVolume>0 && musicDelay<endMs-startMs){
+            try {
+                sequences.add(makeMusic(context,musicUri,startMs,endMs,musicDelay,
+                        musicVolume,ducking,duckPercent,captions));
+            }catch(Exception ex){
+                callback.error("Não foi possível preparar a música de fundo: "+ex.getMessage());
+                return;
+            }
         }
         try {
             EditedMediaItemSequence sfx=makeSounds(context,mediaCues,startMs,endMs);
@@ -100,6 +112,48 @@ public final class VideoExporter {
                     }
                 }).build();
         transformer.start(composition, output.getAbsolutePath());
+    }
+
+    /**
+     * Cria a trilha musical iniciando após um silêncio, repetindo a música até o fim do vídeo.
+     * Não usamos setIsLooping(true) com um gap: isso repetiria o silêncio a cada volta.
+     */
+    private EditedMediaItemSequence makeMusic(Context context,Uri uri,long trimStart,long trimEnd,
+            long delay,int volume,boolean ducking,int duckPercent,List<Caption> captions)
+            throws Exception {
+        MediaMetadataRetriever retriever=new MediaMetadataRetriever();
+        long fileMs;
+        try {
+            retriever.setDataSource(context,uri);
+            String length=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            fileMs=length==null?0L:Long.parseLong(length);
+        } finally { retriever.release(); }
+        if(fileMs<200)throw new Exception("Não consegui medir a duração da música. Tente um MP3 ou M4A local.");
+        long total=trimEnd-trimStart;
+        long cursor=Math.max(0,delay);
+        EditedMediaItemSequence.Builder track=new EditedMediaItemSequence.Builder();
+        track.experimentalSetForceAudioTrack(true);
+        if(cursor>0)track.addGap(cursor*1000L);
+        int items=0;
+        while(cursor<total && items<100) {
+            long part=Math.min(fileMs,total-cursor);
+            if(part<30)break;
+            MediaItem item=new MediaItem.Builder().setUri(uri)
+                    .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
+                            .setEndPositionMs(part).build()).build();
+            float mainGain=Math.max(0f,Math.min(1f,volume/100f));
+            float lowGain=mainGain*Math.max(0f,Math.min(1f,duckPercent/100f));
+            SmartMixAudioProcessor envelope=new SmartMixAudioProcessor(
+                    mainGain,lowGain,ducking,cursor,trimStart,captions,items==0);
+            EditedMediaItem music=new EditedMediaItem.Builder(item)
+                    .setEffects(new Effects(Collections.singletonList(envelope),
+                            Collections.emptyList())).build();
+            track.addItem(music);
+            cursor+=part;
+            items++;
+        }
+        if(items==0)throw new Exception("O trecho da música ficou vazio.");
+        return track.build();
     }
 
     /** Media3 audio gaps let sound effects begin at precise offsets without pausing speech. */
