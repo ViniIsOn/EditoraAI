@@ -28,7 +28,7 @@ public final class SmartCuts {
         String normalized=java.text.Normalizer.normalize(raw.toLowerCase(Locale.ROOT),
                 java.text.Normalizer.Form.NFD).replaceAll("\\p{M}","")
                 .replaceAll("[^a-z ]"," ").trim().replaceAll("\\s+"," ");
-        return normalized.matches("(e+|eh+|ahn+|ahm+|hum+|hmm+|hahn+|err+|hm+|tipo|entao e|e entao)");
+        return normalized.matches("(e+|eh+|ahn+|ahm+|hum+|hmm+|hahn+|err+|hm+)");
     }
     /**
      * Um intervalo "sem legendas" só vira candidato se for grande e não esbarrar
@@ -45,21 +45,22 @@ public final class SmartCuts {
         long cursor=start;
         for(Caption c:sorted){
             long a=Math.max(start,c.startMs),b=Math.min(end,c.endMs);
-            if(a>cursor && a-cursor>=gapThresholdMs){
-                long lo=cursor==start?cursor:cursor+175;
-                long hi=a-175;
-                if(hi-lo>=250)list.add(new Cut(lo,hi,"Pausa sem legenda"));
+            if(a>cursor && a-cursor>=Math.max(1500,gapThresholdMs)){
+                // Margem maior: não encostar em sílabas/frases próximas ao intervalo.
+                long lo=cursor==start?cursor:cursor+400;
+                long hi=a-400;
+                if(hi-lo>=450)list.add(new Cut(lo,hi,"Possível pausa (confirme ouvindo)"));
             }
             if(fillers && fillerOnly(c.text) && b-a>=240
-                    && a>start+100 && b<end-100){
+                    && a>start+250 && b<end-250){
                 list.add(new Cut(a,b,"Hesitação: "+c.text));
             }
             cursor=Math.max(cursor,b);
         }
         if(end-cursor>=gapThresholdMs){
-            long lo=cursor+175;
-            long hi=end; // remove silêncio final
-            if(hi-lo>=250)list.add(new Cut(lo,hi,"Pausa no final"));
+            long lo=cursor+400;
+            long hi=end-180;
+            if(hi-lo>=450)list.add(new Cut(lo,hi,"Possível pausa final"));
         }
         list.sort(Comparator.comparingLong(c->c.startMs));
         return list;
@@ -108,6 +109,34 @@ public final class SmartCuts {
         }
         return out;
     }
+    /** Posições de junção no MP4, excluindo bordas. */
+    public static List<Long> joinPositions(List<Span> kept){
+        List<Long> joins=new ArrayList<>();
+        long position=0;
+        for(int i=0;i<kept.size();i++){
+            position+=kept.get(i).length();
+            if(i+1<kept.size())joins.add(position);
+        }
+        return joins;
+    }
+    /** Mantém os itens de apoio após cortes, inclusive se atravessarem uma junção. */
+    public static List<MediaCue> mapCues(List<MediaCue> cues,List<Span> kept){
+        List<MediaCue> result=new ArrayList<>();
+        long offset=0;
+        for(Span span:kept){
+            for(MediaCue cue:cues){
+                if(!cue.isImage()&&!"sfx".equals(cue.kind))continue;
+                long a=Math.max(span.startMs,cue.startMs);
+                long b=Math.min(span.endMs,cue.endMs);
+                if(b<=a)continue;
+                result.add(new MediaCue(cue.kind,cue.uri,cue.label,cue.credit,cue.sound,
+                        offset+a-span.startMs,offset+b-span.startMs,cue.effect));
+            }
+            offset+=span.length();
+        }
+        return result;
+    }
+
     /** SFX são atrelados à parte audível da fonte, sem mudar outros itens. */
     public static List<MediaCue> mapSoundCues(List<MediaCue> cues,List<Span> kept){
         List<MediaCue> out=new ArrayList<>();
