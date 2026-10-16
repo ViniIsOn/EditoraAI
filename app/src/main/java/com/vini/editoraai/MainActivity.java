@@ -76,6 +76,10 @@ public final class MainActivity extends Activity {
     private final ExecutorService work = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<Caption> captions = new ArrayList<>();
+    private final List<SmartCuts.Cut> selectedCuts = new ArrayList<>();
+    private int visualFxMode=0;
+    private Spinner visualFxSpinner;
+    private TextView smartCutStatus;
     private List<MediaCue> activeMedia=new ArrayList<>();
     private MediaCue shownMedia;
     private ImageView mediaImage,watermarkPreview;
@@ -421,8 +425,34 @@ public final class MainActivity extends Activity {
         });
         gap(root, 13);
 
+        LinearLayout smartCutBox=panel(root);
+        title(smartCutBox,"04  CORTES INTELIGENTES");
+        smartCutBox.addView(label("Sugestões de pausas e hesitações baseadas no TEMPO das legendas. Confira cada trecho antes de aceitar: a IA pode confundir silêncio, música e fala.",12,MUTED,false));
+        gap(smartCutBox,8);
+        smartCutBox.addView(action("✂ Detectar pausas e revisar cortes",true,this::reviewSmartCuts));
+        smartCutBox.addView(action("↶ Desfazer todos os cortes",false,()->{
+            selectedCuts.clear();updateSmartCutStatus();saveProject();
+        }));
+        smartCutStatus=label("Nenhum corte aplicado • sua gravação está preservada",12,CYAN,false);
+        smartCutBox.addView(smartCutStatus);
+        gap(smartCutBox,9);
+        smartCutBox.addView(label("EFEITOS ANIMADOS E TRANSIÇÕES",12,CYAN,true));
+        smartCutBox.addView(label("Aplique flash anime, linhas de velocidade, glitch ou explosão pop na entrada dos cortes e em acentos visuais. São animações gráficas, não uma dissolução entre vídeos.",12,MUTED,false));
+        visualFxSpinner=new Spinner(this);
+        visualFxSpinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,
+                VisualFxOverlay.MODES));
+        visualFxSpinner.setSelection(visualFxMode);
+        visualFxSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
+                visualFxMode=position;saveProject();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent){}
+        });
+        smartCutBox.addView(visualFxSpinner);
+        gap(root,13);
+
         LinearLayout captionsBox = panel(root);
-        title(captionsBox, "03  LEGENDAS COM IA");
+        title(captionsBox, "05  LEGENDAS COM IA");
         captionsBox.addView(label("NOVO • Legendas offline em português! Na primeira vez, baixe o modelo Vosk (~31 MB); depois transcreva vídeos sem API nem internet. A voz não sai do aparelho. Revise possíveis erros de reconhecimento.", 13, MUTED, false));
         gap(captionsBox, 11);
         captionsBox.addView(action("✦ Gerar legendas SEM INTERNET", true, this::requestOfflineTranscription));
@@ -647,6 +677,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if(requestCode == REQ_TELEPROMPTER) {
+            selectedCuts.clear();updateSmartCutStatus();
             videoUri=uri;
             durationMs=0;trimStartMs=0;trimEndMs=0;
             captions.clear();
@@ -666,6 +697,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if (requestCode == REQ_ANALYST) {
+            selectedCuts.clear();updateSmartCutStatus();
             videoUri=uri;
             try { getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION); }
             catch(SecurityException ignored){}
@@ -682,6 +714,7 @@ public final class MainActivity extends Activity {
         }
         if (requestCode == REQ_FONT) { importUserFont(uri); return; }
         if (requestCode == REQ_VIDEO) {
+            selectedCuts.clear();updateSmartCutStatus();
             videoUri = uri;
             durationMs = 0; trimStartMs = 0; trimEndMs = 0;
             captions.clear(); updateCaptionsLabel();
@@ -1048,6 +1081,57 @@ public final class MainActivity extends Activity {
         if(duckVolumeSeek!=null)duckVolumeSeek.setEnabled(musicDucking);
     }
 
+    private void updateSmartCutStatus(){
+        if(smartCutStatus==null)return;
+        long saved=0;
+        for(SmartCuts.Cut c:selectedCuts)saved+=c.endMs-c.startMs;
+        smartCutStatus.setText(selectedCuts.isEmpty()
+                ?"Nenhum corte aplicado • original preservado"
+                :selectedCuts.size()+" cortes selecionados • ~"+String.format(Locale.getDefault(),
+                    "%.1f",saved/1000f)+"s a menos no MP4");
+    }
+
+    private void reviewSmartCuts(){
+        if(!ensureVideo()||busy)return;
+        if(captions.isEmpty()){
+            new AlertDialog.Builder(this).setTitle("Gere as legendas primeiro")
+                    .setMessage("O detector de pausas usa o tempo das palavras reconhecidas no vídeo. Gere as legendas offline, confira se estão certas e depois volte aqui. Sem fala reconhecida, não vamos cortar nada.")
+                    .setPositiveButton("Entendi",null).show();
+            return;
+        }
+        List<SmartCuts.Cut> candidates=SmartCuts.propose(captions,trimStartMs,
+                trimEndMs>0?trimEndMs:durationMs,900,true);
+        if(candidates.isEmpty()){
+            info("Não encontrei pausas longas nem hesitações isoladas. Seu vídeo está pronto para exportar sem cortes.");
+            return;
+        }
+        int count=Math.min(15,candidates.size());
+        CharSequence[] labels=new CharSequence[count];
+        boolean[] checked=new boolean[count];
+        for(int i=0;i<count;i++){
+            SmartCuts.Cut item=candidates.get(i);
+            labels[i]=clock(item.startMs)+" → "+clock(item.endMs)+" • "+
+                    item.reason+" ("+String.format(Locale.getDefault(),"%.1fs",
+                    (item.endMs-item.startMs)/1000f)+")";
+            checked[i]=true;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Revisar "+count+" possíveis cortes")
+            .setMessage("Marque só as pausas que realmente quer remover. Ouça esses segundos na prévia antes de confirmar. O áudio original permanece salvo.")
+            .setMultiChoiceItems(labels,checked,(dialog,index,value)->checked[index]=value)
+            .setPositiveButton("Aplicar seleção",(d,w)->{
+                selectedCuts.clear();
+                for(int i=0;i<count;i++)if(checked[i])selectedCuts.add(candidates.get(i));
+                updateSmartCutStatus();saveProject();
+                info("Cortes selecionados. Serão aplicados somente ao exportar; o original e sua prévia continuam intactos.");
+            })
+            .setNegativeButton("Cancelar",null)
+            .setNeutralButton("Ouvir vídeo", (d,w)->{
+                player.seekTo(candidates.get(0).startMs);
+                player.play();
+            }).show();
+    }
+
     private void startExport() {
         if (!ensureVideo() || busy) return;
         if (trimEndMs <= trimStartMs) { error("Selecione um intervalo de vídeo válido."); return; }
@@ -1065,6 +1149,7 @@ public final class MainActivity extends Activity {
                     captionStyle, captionAnimation, captionFont, captionSize, captionPosition,
                     voiceVolumePercent,musicVolumePercent,musicStartMs,musicDucking,duckVolumePercent,
                     watermarkEnabled,watermarkCorner,watermarkSize,watermarkOpacity,
+                    new ArrayList<>(selectedCuts),visualFxMode,
                     new VideoExporter.Listener() {
                         @Override public void success(File mp4) {
                             info("Finalizando o MP4 na galeria...");
@@ -1178,6 +1263,16 @@ public final class MainActivity extends Activity {
         e.putInt("watermark_corner",watermarkCorner);
         e.putInt("watermark_size",watermarkSize);
         e.putInt("watermark_opacity",watermarkOpacity);
+        e.putInt("visual_fx_mode",visualFxMode);
+        org.json.JSONArray cutsJson=new org.json.JSONArray();
+        for(SmartCuts.Cut item:selectedCuts){
+            org.json.JSONObject obj=new org.json.JSONObject();
+            try{
+                obj.put("start",item.startMs);obj.put("end",item.endMs);
+                obj.put("reason",item.reason);cutsJson.put(obj);
+            }catch(Exception ignored){}
+        }
+        e.putString("smart_cuts",cutsJson.toString());
         e.putInt("caption_style", captionStyle); e.putInt("caption_animation", captionAnimation);
         e.putInt("caption_font", captionFont); e.putInt("caption_size", captionSize);
         e.putInt("caption_position", captionPosition);
@@ -1197,6 +1292,16 @@ public final class MainActivity extends Activity {
             watermarkCorner=Math.max(0,Math.min(3,p.getInt("watermark_corner",3)));
             watermarkSize=Math.max(12,Math.min(45,p.getInt("watermark_size",24)));
             watermarkOpacity=Math.max(15,Math.min(100,p.getInt("watermark_opacity",82)));
+            visualFxMode=Math.max(0,Math.min(VisualFxOverlay.MODES.length-1,p.getInt("visual_fx_mode",0)));
+            if(visualFxSpinner!=null)visualFxSpinner.setSelection(visualFxMode);
+            selectedCuts.clear();
+            org.json.JSONArray savedCuts=new org.json.JSONArray(p.getString("smart_cuts","[]"));
+            for(int i=0;i<savedCuts.length()&&i<15;i++){
+                org.json.JSONObject item=savedCuts.getJSONObject(i);
+                long a=item.optLong("start"),b=item.optLong("end");
+                if(b>a)selectedCuts.add(new SmartCuts.Cut(a,b,item.optString("reason","Pausa")));
+            }
+            updateSmartCutStatus();
             if(watermarkSwitch!=null)watermarkSwitch.setChecked(watermarkEnabled);
             if(watermarkCornerSpinner!=null)watermarkCornerSpinner.setSelection(watermarkCorner);
             if(watermarkSizeSeek!=null)watermarkSizeSeek.setProgress(watermarkSize-12);
