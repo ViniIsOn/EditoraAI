@@ -75,6 +75,14 @@ public final class TeleprompterActivity extends ComponentActivity {
             +"Ele vai continuar como meu avatar VTuber nas lives!\n\n"
             +"Valeu, pessoal, e até o próximo vídeo!";
 
+    private static final String SONIC_RUMBLE_SCRIPT =
+            "Você conhece Sonic Rumble? Então olha três curiosidades que talvez você não saiba!\n\n"
+            +"Primeira: o jogo acontece num mundo de brinquedos criado pelo doutor Eggman. Por isso os personagens parecem bonequinhos!\n\n"
+            +"Segunda: as partidas podem reunir até trinta e dois jogadores, com desafios de obstáculos, sobrevivência e coleta de Rings!\n\n"
+            +"Terceira: alguns mapas são inspirados em lugares clássicos do Sonic, como Green Hill e Sky Sanctuary!\n\n"
+            +"Agora deixa eu mostrar minha conta! Já cheguei ao nível vinte e um e tenho um Sonic dourado de raridade épica.\n\n"
+            +"Meu personagem favorito é o Vector, que eu já desbloqueei e é raro. Mas costumo jogar com o Sonic dourado porque ele é épico!\n\n"
+            +"E o seu favorito? Comenta aí e segue o Poder Azul para mais curiosidades!";
     private final Handler handler=new Handler(Looper.getMainLooper());
     private PreviewView preview;
     private ScrollView scriptScroll;
@@ -89,7 +97,7 @@ public final class TeleprompterActivity extends ComponentActivity {
     private long lastTick=0;
     private double scrollFraction=0;
     private int speedDpPerSecond=46, textSizeSp=29;
-    private String script=DEFAULT_SCRIPT;
+    private String script="";
     private File oldAndroidFile;
 
     @Override public void onCreate(Bundle savedInstanceState){
@@ -99,7 +107,7 @@ public final class TeleprompterActivity extends ComponentActivity {
         getWindow().setNavigationBarColor(BG);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         SharedPreferences prefs=getSharedPreferences("teleprompter",MODE_PRIVATE);
-        script=prefs.getString("script",DEFAULT_SCRIPT);
+        script=prefs.getString("script","");
         speedDpPerSecond=prefs.getInt("speed",46);
         textSizeSp=prefs.getInt("size",29);
         buildScreen();
@@ -131,7 +139,7 @@ public final class TeleprompterActivity extends ComponentActivity {
         whole.addView(root);setContentView(whole);
         root.addView(label("🎥 GRAVAR COM ROTEIRO",22,WHITE));
         gap(root,4);
-        root.addView(label("A câmera grava você e sua voz. As palavras são um guia na tela, não aparecem no vídeo.",12,CYAN));
+        root.addView(label("Selecione Sonic Rumble, Poder Azul ou comece em branco. Use Próxima fala para não esperar a rolagem. O texto não aparece no MP4.",12,CYAN));
         gap(root,10);
         FrameLayout stage=new FrameLayout(this);
         LinearLayout.LayoutParams stageParams=new LinearLayout.LayoutParams(-1,dp(445));
@@ -176,8 +184,11 @@ public final class TeleprompterActivity extends ComponentActivity {
         pauseButton.setVisibility(View.GONE);
         root.addView(pauseButton,new LinearLayout.LayoutParams(-1,dp(48)));
         gap(root,7);
+        root.addView(button("📄 Escolher roteiro pronto: Sonic Rumble / Poder Azul / Em branco",
+                this::choosePreset));
         editButton=button("✎ Editar / colar roteiro",this::editScript);
         root.addView(editButton);
+        root.addView(button("⏩ Ir para a PRÓXIMA fala",this::jumpNextSpeech));
         root.addView(button("↺ Voltar ao início do roteiro",()->{
             if(recording==null){scriptScroll.scrollTo(0,0);scrollFraction=0;}
             else status.setText("Pause a gravação antes de reiniciar o roteiro.");
@@ -222,6 +233,44 @@ public final class TeleprompterActivity extends ComponentActivity {
                 .putString("script",script)
                 .putInt("speed",speedDpPerSecond)
                 .putInt("size",textSizeSp).apply();
+    }
+    private void choosePreset(){
+        if(recording!=null||isSaving||countdown>0){
+            status.setText("Termine a gravação para trocar de roteiro.");
+            return;
+        }
+        final String[] presets={"🎮 Curiosidades Sonic Rumble","🦜 Revelação Poder Azul • 300 seguidores",
+                "✎ Começar em branco","Cancelar"};
+        new AlertDialog.Builder(this).setTitle("Qual vídeo vai gravar?")
+                .setItems(presets,(dialog,which)->{
+                    if(which==3)return;
+                    script=which==0?SONIC_RUMBLE_SCRIPT:which==1?DEFAULT_SCRIPT:"";
+                    scriptView.setText(script);
+                    scriptScroll.scrollTo(0,0);
+                    scrollFraction=0;
+                    saveSettings();
+                    status.setText(which==2?"Roteiro vazio. Cole ou escreva suas falas.":
+                            "Roteiro pronto! Pode ajustar, gravar ou pular para a próxima fala.");
+                }).show();
+    }
+
+    /** Salta parágrafos na tela sem aguardar a rolagem; não muda a gravação. */
+    private void jumpNextSpeech(){
+        if(script.trim().isEmpty()){status.setText("Escolha ou cole um roteiro primeiro.");return;}
+        scriptScroll.post(()->{
+            android.text.Layout layout=scriptView.getLayout();
+            if(layout==null)return;
+            int first=layout.getOffsetForVertical(Math.max(0,
+                    scriptScroll.getScrollY()+dp(23)));
+            int next=script.indexOf("\n\n",Math.min(script.length(),first+1));
+            if(next<0){scriptScroll.fullScroll(View.FOCUS_DOWN);
+                status.setText("Você chegou ao final do roteiro.");return;}
+            int after=next+2;
+            while(after<script.length() && script.charAt(after)=='\n')after++;
+            int line=layout.getLineForOffset(Math.min(script.length(),after));
+            scriptScroll.smoothScrollTo(0,layout.getLineTop(line));
+            status.setText("Próxima fala! Pode continuar sem esperar.");
+        });
     }
     private void editScript(){
         if(recording!=null||isSaving||countdown>0){status.setText("Termine a gravação antes de editar o roteiro.");return;}
@@ -341,7 +390,7 @@ public final class TeleprompterActivity extends ComponentActivity {
                 pending=videoCapture.getOutput().prepareRecording(this,
                         new FileOutputOptions.Builder(oldAndroidFile).build());
             }
-            scriptScroll.scrollTo(0,0);scrollFraction=0;
+            scrollFraction=0;
             recording=pending.withAudioEnabled().start(
                     ContextCompat.getMainExecutor(this),this::onRecordingEvent);
             recordButton.setText("■ PARAR E USAR VÍDEO");
