@@ -260,8 +260,9 @@ public final class TeleprompterActivity extends ComponentActivity {
         scriptScroll.post(()->{
             android.text.Layout layout=scriptView.getLayout();
             if(layout==null)return;
-            int first=layout.getOffsetForVertical(Math.max(0,
+            int visibleLine=layout.getLineForVertical(Math.max(0,
                     scriptScroll.getScrollY()+dp(23)));
+            int first=layout.getLineStart(visibleLine);
             int next=script.indexOf("\n\n",Math.min(script.length(),first+1));
             if(next<0){scriptScroll.fullScroll(View.FOCUS_DOWN);
                 status.setText("Você chegou ao final do roteiro.");return;}
