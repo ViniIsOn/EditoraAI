@@ -1,33 +1,47 @@
-# EditoraAI v0.7 MIXAGEM — mixagem inteligente para narração e música
+# EditoraAI v0.8 — Teleprompter e câmera frontal integrada
 
-A versão 0.7 mantém a v0.6 (legendas Vosk offline, fontes, GIFs, suporte a Google Fotos/Drive, referências YouTube, analista, sobreposições e exportação 9:16) e adiciona controle do áudio exportado.
+## Gravar e editar no mesmo app
 
-## Novo controle no painel Arquivos — Mixagem Inteligente
+Na tela inicial, seção **01 Arquivos**, toque em **🎥 GRAVAR MEU ROSTO COM TELEPROMPTER**.
 
-- **Voz do vídeo**: controla a amplitude do áudio original de 0 a 180% (100% preserva o original). Aumentar muito pode distorcer/clipping; comece em 100%.
-- **Música de fundo**: controla o volume da faixa de 0 a 100%, com valor inicial de 26%. É mixada junto com o áudio do vídeo, não substitui a narração.
-- **Início da música**: controle de precisão 0,1 segundo, contado desde o começo do **vídeo exportado**, depois do corte. Por exemplo 00:11.0 para começar na revelação do rosto. Antes desse ponto, a faixa musical fica silenciosa.
-- **Redução automática durante a fala**: o processamento consulta os intervalos das legendas geradas pelo Vosk e usa o volume reduzido configurado (padrão 28% do volume original da música) durante a fala. A transição é suavizada para evitar cliques de áudio. **Esta versão não faz detecção de voz independente**; se não houver legendas, a música ficará com volume constante.
-- **Fade de entrada curto** da música (260ms).
-- A trilha pode repetir até o final do vídeo sem repetir o silêncio inicial.
-- Os valores ficam salvos localmente no projeto; nenhum serviço de IA online ou chave de API é necessário.
+O novo gravador usa **CameraX 1.4.2** e fornece:
 
-## Como criar o vídeo de revelação
+- **Prévia da câmera frontal** (ou traseira caso não haja câmera frontal).
+- **Áudio pelo microfone** gravado junto com o vídeo.
+- **Roteiro na tela** em uma caixa escura próxima da lente: cola/edita um texto, rola automaticamente durante a gravação e **não aparece no MP4**.
+- Um roteiro de exemplo adaptável para a revelação de rosto do canal Poder Azul e os 300 seguidores, que pode ser substituído por qualquer texto.
+- **Velocidade do texto** de 12 a 132 pixels lógicos por segundo e **tamanho de letra** de 18 a 44 sp.
+- **Contagem de 3 segundos**, gravar, pausar, retomar, parar e salvar.
+- **Salva em Filmes/EditoraAI na galeria** em Android 10+ com MediaStore. Em Android 8/9 grava no diretório privado de vídeos e solicita indexação à galeria.
+- A gravação finalizada **volta automaticamente ao editor** como vídeo principal: pode criar legendas Vosk PT-BR offline, música, volume, memes, GIFs, SFX e exportação 9:16.
+- Roteiro, velocidade e tamanho guardados no armazenamento privado do app.
+- **Permissões explícitas de câmera e microfone** somente ao abrir o gravador. O app não começa a filmar antes da contagem e de tocar em gravar.
+- O app evita deixar o teleprompter e o microfone ocultos durante uma gravação: exibe botão de parada, timer e status permanente.
 
-1. Grave o vídeo em que você aparece, importe no EditoraAI.
-2. Importe uma música que tenha permissão para utilizar/publicar.
-3. Ajuste voz para 100%, música para 20–30%, início para **00:11.0**, habilite redução automática e escolha música durante a fala entre 20 e 40%.
-4. Gere legendas offline, revise e exporte.
-5. Assista na galeria para conferir os níveis. **A prévia do editor ainda reproduz só o áudio bruto do vídeo**; os controles de mixagem são aplicados ao arquivo exportado.
+## Como gravar a revelação
 
-## Direitos autorais
+1. Abra **EditoraAI TELEPROMPTER** e toque **Gravar meu rosto com Teleprompter**.
+2. Permita **câmera e microfone**.
+3. Toque **Editar/colar roteiro** e use o texto completo da revelação. Configure tamanho e velocidade para conseguir ler perto da lente.
+4. Toque **GRAVAR VÍDEO**. Aguarde a contagem 3–2–1. Leia sem correr.
+5. Toque **PAUSAR** quando precisar e **RETOMAR** para continuar a mesma gravação.
+6. Toque **PARAR E USAR VÍDEO**. O vídeo é salvo na galeria e aberto automaticamente no editor.
+7. Gere legendas offline e importe somente trilhas musicais que você tem autorização para usar/publicar.
+8. Em Mixagem Inteligente, escolha volume da voz e início da trilha no tempo desejado.
+9. Exporte, verifique áudio, enquadramento e legendas antes de publicar.
 
-Possuir um arquivo de música de Mario Odyssey não significa ter autorização para publicá-lo; o Kwai pode silenciar ou restringir um vídeo com trilha protegida. Use a biblioteca licenciada da plataforma quando disponível, ou uma faixa própria/licenciada.
+## Compatibilidade e limitações
 
-## Instalação e testes
+- Gravação com qualidade HD (720p), com fallback para qualidade disponível no celular. Saída orientada para vídeo vertical por meio da rotação e processamento do Android; o editor mantém formato exportado 720×1280.
+- O roteiro é um **overlay de leitura**, não um texto queimado no vídeo capturado. O arquivo MP4 tem rosto e voz, sem roteiro.
+- Prévia de câmera frontal pode ser espelhada; esta versão tenta alinhar o espelhamento do arquivo ao da prévia usando MirrorMode CameraX.
+- Só uma câmera e uma gravação por vez. Se a câmera/microfone não estiver disponível ou a permissão for negada, o app mostra um aviso.
+- O contador é iniciado na confirmação do gravador; podem ocorrer pequenas diferenças de tempo, dependendo do celular.
+- Evite mostrar detalhes privados no cenário do vídeo (endereço, escola, documentos, localização).
+- **Pacote debug separado:** `com.vini.editoraai.teleprompter`, instalado ao lado da v0.7 para não apagar projetos das versões anteriores. Não compartilha o modelo Vosk nem os dados privados com as versões antigas.
 
-APK debug usa `com.vini.editoraai.mixagem`, instalado ao lado dos apps anteriores para preservar projetos. O Vosk exige download inicial novamente, pois cada pacote tem pasta privada diferente. A versão release mantém o identificador original.
+## Build
 
-Compilação: JDK 17, Android SDK 35, Media3 1.8.0, Gradle 8.10.2. Artefato `EditoraAI-v0.7.0-MIXAGEM-APK`.
+Android minSdk 26, targetSdk 35, CameraX 1.4.2, Media3 1.8.0, Java 17, Gradle 8.10.2. GitHub Actions gera `EditoraAI-v0.8.0-TELEPROMPTER-APK`.
 
-A compilação garante código-fonte Java válido, mas não testa mixers, codecs ou fontes num Android real. Confirme a mixagem exportando primeiro um vídeo de 10–20 segundos com voz e uma música licenciada.
+A compilação garante que o app é compilável; não valida a captura real nem a sincronização no hardware do celular. Antes de gravar um vídeo longo, faça um teste de 10 segundos e confira voz e imagem na galeria.

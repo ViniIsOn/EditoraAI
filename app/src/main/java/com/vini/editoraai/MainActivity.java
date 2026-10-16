@@ -62,6 +62,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_MUSIC = 72;
     private static final int REQ_FONT = 73;
     private static final int REQ_ANALYST = 74;
+    private static final int REQ_TELEPROMPTER = 75;
     private static final int BG = Color.rgb(9, 15, 29);
     private static final int PANEL = Color.rgb(20, 30, 49);
     private static final int CYAN = Color.rgb(44, 216, 221);
@@ -212,6 +213,9 @@ public final class MainActivity extends Activity {
         LinearLayout sourceBox = panel(root);
         title(sourceBox, "01  ARQUIVOS");
         sourceBox.addView(action("+ Importar vídeo", true, () -> openDocument("video/*", REQ_VIDEO)));
+        gap(sourceBox, 8);
+        sourceBox.addView(action("🎥 GRAVAR MEU ROSTO COM TELEPROMPTER", true, this::openTeleprompter));
+        sourceBox.addView(label("Grave na câmera frontal, com seu roteiro passando na tela. Ao parar, o vídeo entra no editor com o som original; o roteiro NÃO aparece na gravação.",12,MUTED,false));
         gap(sourceBox, 8);
         sourceBox.addView(action("♫ Adicionar música de fundo", false, () -> openDocument("audio/*", REQ_MUSIC)));
         musicLabel = label("Sem música extra", 12, MUTED, false);
@@ -468,7 +472,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v0.7 MIXAGEM  •  Volume, entrada e ducking  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v0.8 TELEPROMPTER  •  Gravação com roteiro  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -479,12 +483,38 @@ public final class MainActivity extends Activity {
         startActivityForResult(i, code);
     }
 
+    private void openTeleprompter() {
+        if(busy){info("Espere a exportação ou transcrição terminar antes de gravar.");return;}
+        if(player!=null)player.pause();
+        saveProject();
+        startActivityForResult(new Intent(this,TeleprompterActivity.class),REQ_TELEPROMPTER);
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
         catch (SecurityException ignored) { }
+        if(requestCode == REQ_TELEPROMPTER) {
+            videoUri=uri;
+            durationMs=0;trimStartMs=0;trimEndMs=0;
+            captions.clear();
+            updateCaptionsLabel();
+            shownMedia=null;
+            activeMedia=MediaCueStore.load(this,uri);
+            if(mediaImage!=null){
+                mediaImage.setVisibility(View.GONE);
+                mediaImage.setImageDrawable(null);
+            }
+            player.setMediaItem(MediaItem.fromUri(uri));
+            player.prepare();
+            player.play();
+            fileLabel.setText("🎥 Gravação com roteiro: "+displayName(uri));
+            saveProject();
+            info("Gravação salva! Agora gere legendas, adicione música e edite o vídeo.");
+            return;
+        }
         if (requestCode == REQ_ANALYST) {
             videoUri=uri;
             try { getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION); }

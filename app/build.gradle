@@ -8,15 +8,15 @@ android {
         applicationId 'com.vini.editoraai'
         minSdk 26
         targetSdk 35
-        versionCode 11
-        versionName '0.7.0'
+        versionCode 12
+        versionName '0.8.0'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes {
         debug {
             // Instala ao lado da v0.2; não exige desinstalar nem perder dados da anterior.
-            applicationIdSuffix '.mixagem'
-            manifestPlaceholders = [appLabel: 'EditoraAI MIXAGEM']
+            applicationIdSuffix '.teleprompter'
+            manifestPlaceholders = [appLabel: 'EditoraAI TELEPROMPTER']
         }
         release {
             minifyEnabled false
@@ -32,4 +32,13 @@ dependencies {
     implementation "androidx.media3:media3-ui:$media3"
     implementation "androidx.media3:media3-transformer:$media3"
     implementation "androidx.media3:media3-effect:$media3"
+
+    // CameraX: gravação de rosto com áudio, em HD, direto na galeria.
+    def camerax = '1.4.2'
+    implementation "androidx.camera:camera-core:$camerax"
+    implementation "androidx.camera:camera-camera2:$camerax"
+    implementation "androidx.camera:camera-lifecycle:$camerax"
+    implementation "androidx.camera:camera-video:$camerax"
+    implementation "androidx.camera:camera-view:$camerax"
+    implementation 'androidx.activity:activity:1.9.3'
 }
