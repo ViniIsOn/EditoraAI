@@ -81,6 +81,7 @@ public final class MainActivity extends Activity {
     private String groqKey = ""; // memory-only, never saved to disk
     private long durationMs = 0, trimStartMs = 0, trimEndMs = 0;
     private boolean busy = false;
+    private boolean restoringProject = false;
     private SeekBar startSeek, endSeek, timelineSeek, voiceVolumeSeek, musicVolumeSeek, musicStartSeek, duckVolumeSeek;
     private TextView voiceVolumeLabel, musicVolumeLabel, musicStartLabel, duckVolumeLabel;
     private int voiceVolumePercent=100, musicVolumePercent=26, duckVolumePercent=28;
@@ -258,9 +259,11 @@ public final class MainActivity extends Activity {
         musicStartSeek.setProgress(0);
         musicStartSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             @Override public void onProgressChanged(SeekBar b,int progress,boolean user){
-                musicStartMs=progress*100L;
-                updateMixLabels();
-                if(user)saveProject();
+                if(user) {
+                    musicStartMs=progress*100L;
+                    updateMixLabels();
+                    saveProject();
+                }
             }
             @Override public void onStartTrackingTouch(SeekBar b){}
             @Override public void onStopTrackingTouch(SeekBar b){}
@@ -980,6 +983,7 @@ public final class MainActivity extends Activity {
     }
 
     private void saveProject() {
+        if(restoringProject) return;
         SharedPreferences.Editor e = getSharedPreferences("editor", MODE_PRIVATE).edit();
         e.putString("video", videoUri == null ? "" : videoUri.toString());
         e.putString("music", musicUri == null ? "" : musicUri.toString());
@@ -996,6 +1000,7 @@ public final class MainActivity extends Activity {
         e.putString("captions", arr.toString()); e.apply();
     }
     private void restoreProject() {
+        restoringProject=true;
         SharedPreferences p = getSharedPreferences("editor", MODE_PRIVATE);
         try {
             voiceVolumePercent=Math.max(0,Math.min(180,p.getInt("voice_gain",100)));
@@ -1034,6 +1039,7 @@ public final class MainActivity extends Activity {
             for (int i = 0; i < arr.length(); i++) captions.add(Caption.fromJson(arr.getJSONObject(i)));
             updateCaptionsLabel();
         } catch (Exception ignored) { info("Não foi possível recuperar o projeto anterior."); }
+        finally { restoringProject=false; }
     }
 
     private LinearLayout panel(LinearLayout parent) {
