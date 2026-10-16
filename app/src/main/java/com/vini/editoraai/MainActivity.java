@@ -428,7 +428,7 @@ public final class MainActivity extends Activity {
 
         LinearLayout smartCutBox=panel(root);
         title(smartCutBox,"04  CORTES INTELIGENTES");
-        smartCutBox.addView(label("Sugestões de pausas e hesitações baseadas no TEMPO das legendas. Confira cada trecho antes de aceitar: a IA pode confundir silêncio, música e fala.",12,MUTED,false));
+        smartCutBox.addView(label("⚠ O reconhecimento pode errar. Nenhum corte vem marcado: ouça e confirme somente as pausas que quer remover. O vídeo original não é alterado.",12,MUTED,false));
         gap(smartCutBox,8);
         smartCutBox.addView(action("✂ Detectar pausas e revisar cortes",true,this::reviewSmartCuts));
         smartCutBox.addView(action("↶ Desfazer todos os cortes",false,()->{
@@ -438,7 +438,7 @@ public final class MainActivity extends Activity {
         smartCutBox.addView(smartCutStatus);
         gap(smartCutBox,9);
         smartCutBox.addView(label("EFEITOS ANIMADOS E TRANSIÇÕES",12,CYAN,true));
-        smartCutBox.addView(label("Aplique flash anime, linhas de velocidade, glitch ou explosão pop na entrada dos cortes e em acentos visuais. São animações gráficas, não uma dissolução entre vídeos.",12,MUTED,false));
+        smartCutBox.addView(label("Agora com triângulos BRANCOS animados, linhas de ação e impacto. São partículas transparentes sobre a sua gravação, não uma tela azul nem transição entre câmeras.",12,MUTED,false));
         visualFxSpinner=new Spinner(this);
         visualFxSpinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,
                 VisualFxOverlay.MODES));
@@ -594,7 +594,7 @@ public final class MainActivity extends Activity {
         status.setPadding(0, dp(11), 0, 0);
         exportBox.addView(status);
         gap(root, 17);
-        root.addView(label("EditoraAI v1.0 SMART EDIT  •  Cortes, efeitos e roteiros  •  Sem anúncios", 11, MUTED, false));
+        root.addView(label("EditoraAI v1.1 CORREÇÕES  •  Anime branco e cortes seguros  •  Sem anúncios", 11, MUTED, false));
     }
 
     private void openDocument(String mime, int code) {
@@ -1134,12 +1134,12 @@ public final class MainActivity extends Activity {
             return;
         }
         List<SmartCuts.Cut> candidates=SmartCuts.propose(captions,trimStartMs,
-                trimEndMs>0?trimEndMs:durationMs,900,true);
+                trimEndMs>0?trimEndMs:durationMs,1800,true);
         if(candidates.isEmpty()){
             info("Não encontrei pausas longas nem hesitações isoladas. Seu vídeo está pronto para exportar sem cortes.");
             return;
         }
-        int count=Math.min(15,candidates.size());
+        int count=Math.min(11,candidates.size());
         CharSequence[] labels=new CharSequence[count];
         boolean[] checked=new boolean[count];
         for(int i=0;i<count;i++){
@@ -1147,11 +1147,17 @@ public final class MainActivity extends Activity {
             labels[i]=clock(item.startMs)+" → "+clock(item.endMs)+" • "+
                     item.reason+" ("+String.format(Locale.getDefault(),"%.1fs",
                     (item.endMs-item.startMs)/1000f)+")";
-            checked[i]=true;
+            checked[i]=false;
         }
         new AlertDialog.Builder(this)
-            .setTitle("Revisar cortes • marque só o silêncio real")
-            .setMultiChoiceItems(labels,checked,(dialog,index,value)->checked[index]=value)
+            .setTitle("Revisar cortes • nenhum pré-selecionado")
+            .setMultiChoiceItems(labels,checked,(dialog,index,value)->{
+                checked[index]=value;
+                if(player!=null){
+                    player.pause();
+                    player.seekTo(Math.max(0,candidates.get(index).startMs-450));
+                }
+            })
             .setPositiveButton("Aplicar seleção",(d,w)->{
                 selectedCuts.clear();
                 for(int i=0;i<count;i++)if(checked[i])selectedCuts.add(candidates.get(i));
@@ -1159,9 +1165,11 @@ public final class MainActivity extends Activity {
                 info("Cortes selecionados. Serão aplicados somente ao exportar; o original e sua prévia continuam intactos.");
             })
             .setNegativeButton("Cancelar",null)
-            .setNeutralButton("Ouvir vídeo", (d,w)->{
-                player.seekTo(candidates.get(0).startMs);
-                player.play();
+            .setNeutralButton("Ouvir primeiro trecho",(d,w)->{
+                if(player!=null){
+                    player.seekTo(Math.max(0,candidates.get(0).startMs-550));
+                    player.play();
+                }
             }).show();
     }
 
