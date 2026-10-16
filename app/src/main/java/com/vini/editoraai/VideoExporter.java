@@ -38,92 +38,201 @@ public final class VideoExporter {
     private final ProgressHolder progressHolder = new ProgressHolder();
     private File output;
 
-    public void start(Context context, Uri videoUri, Uri musicUri, long startMs, long endMs,
-                      List<Caption> captions, List<MediaCue> mediaCues, int style, int animation, int font,
-                      int size, int position, int voiceVolume, int musicVolume, long musicDelay,
-                      boolean ducking, int duckPercent, boolean watermark, int watermarkCorner,
-                      int watermarkSize,int watermarkAlpha, List<SmartCuts.Cut> cuts,
-                      int visualFx, Listener callback) {
-        output = new File(context.getCacheDir(), "editora_export_" + System.currentTimeMillis() + ".mp4");
-        if (output.exists()) output.delete();
+    private File intermediate;
+    private boolean editingFirstPass=false;
+    private volatile boolean cancelled=false;
 
+    /**
+     * Exportação em duas etapas para cortes.
+     * Etapa 1: monta um único vídeo limpo com áudio sincronizado.
+     * Etapa 2: queima legendas, FX, marca d'água e mixagem na linha de tempo FINAL.
+     *
+     * Isso evita aplicar overlays locais com timestamps da composição inteira,
+     * principal causa de legendas fora do lugar na versão antiga.
+     */
+    public void start(Context context, Uri videoUri, Uri musicUri, long startMs, long endMs,
+                      List<Caption> captions, List<MediaCue> mediaCues, int style, int animation,
+                      int font, int size, int position, int voiceVolume, int musicVolume,
+                      long musicDelay, boolean ducking, int duckPercent, boolean watermark,
+                      int watermarkCorner, int watermarkSize, int watermarkAlpha,
+                      List<SmartCuts.Cut> cuts, int visualFx, Listener listener) {
+        cancelled=false;
+        editingFirstPass=false;
+        removeTemp();
+        output=new File(context.getCacheDir(),
+                "editora_export_"+System.currentTimeMillis()+".mp4");
+        if(output.exists())output.delete();
         List<SmartCuts.Span> kept=SmartCuts.kept(startMs,endMs,
                 cuts==null?Collections.emptyList():cuts);
-        if(kept.isEmpty()){callback.error("Todos os trechos foram removidos. Revise os cortes.");return;}
-        if(kept.size()>16){callback.error("Há cortes demais (máximo de 15). Desmarque algumas pausas.");return;}
-        long total=SmartCuts.duration(kept);
-        if(total<500){callback.error("O vídeo restante ficou menor que meio segundo.");return;}
-        ArrayList<EditedMediaItem> clips=new ArrayList<>();
-        try{
-            for(int i=0;i<kept.size();i++){
-                SmartCuts.Span span=kept.get(i);
-                MediaItem video=new MediaItem.Builder().setUri(videoUri)
-                        .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
-                                .setStartPositionMs(span.startMs)
-                                .setEndPositionMs(span.endMs).build()).build();
-                List<Effect> videoFx=new ArrayList<>();
-                videoFx.add(Presentation.createForWidthAndHeight(720,1280,
-                        Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
-                List<TextureOverlay> overlays=new ArrayList<>();
-                ArrayList<MediaCue> pictures=new ArrayList<>();
-                for(MediaCue cue:mediaCues)if(cue.isImage()
-                        &&cue.endMs>span.startMs&&cue.startMs<span.endMs)pictures.add(cue);
-                if(!pictures.isEmpty())overlays.add(
-                        new MediaCueOverlay(context,pictures,span.startMs));
-                ArrayList<Caption> localCaptions=new ArrayList<>();
-                for(Caption c:captions)if(c.endMs>span.startMs&&c.startMs<span.endMs)
-                    localCaptions.add(c);
-                if(!localCaptions.isEmpty())overlays.add(new CaptionOverlay(context,
-                        localCaptions,span.startMs,style,animation,font,size,position));
-                if(watermark)overlays.add(new WatermarkOverlay(context,
-                        watermarkCorner,watermarkSize,watermarkAlpha));
-                if(visualFx>0)overlays.add(new VisualFxOverlay(visualFx,span.length(),i>0));
-                if(!overlays.isEmpty())videoFx.add(new OverlayEffect(overlays));
-                List<androidx.media3.common.audio.AudioProcessor> voiceFx=new ArrayList<>();
-                if(voiceVolume!=100)voiceFx.add(new SmartMixAudioProcessor(
-                        voiceVolume/100f,voiceVolume/100f,false,0L,span.startMs,null,false));
-                clips.add(new EditedMediaItem.Builder(video)
-                        .setEffects(new Effects(voiceFx,videoFx)).build());
-            }
-        }catch(Exception ex){
-            callback.error("Não foi possível preparar os clipes: "+ex.getMessage());
+        if(kept.isEmpty()){
+            listener.error("Não sobrou vídeo depois dos cortes. Desfaça algumas escolhas.");return;
+        }
+        if(kept.size()>12){
+            listener.error("No máximo 11 cortes por exportação para preservar a estabilidade.");return;
+        }
+        if(SmartCuts.duration(kept)<700){
+            listener.error("O resultado ficaria muito curto. Revise os cortes.");return;
+        }
+        if(kept.size()==1){
+            SmartCuts.Span item=kept.get(0);
+            renderFinal(context,videoUri,musicUri,item.startMs,item.endMs,
+                    captions,mediaCues,style,animation,font,size,position,voiceVolume,
+                    musicVolume,musicDelay,ducking,duckPercent,watermark,
+                    watermarkCorner,watermarkSize,watermarkAlpha,
+                    Collections.emptyList(),visualFx,listener);
             return;
         }
-        EditedMediaItemSequence main=new EditedMediaItemSequence.Builder(clips).build();
+        // Primeiro junta vídeo + áudio brutos, sem efeitos nem música.
+        editingFirstPass=true;
+        intermediate=new File(context.getCacheDir(),"editora_join_"+System.currentTimeMillis()+".mp4");
+        if(intermediate.exists())intermediate.delete();
+        ArrayList<EditedMediaItem> items=new ArrayList<>();
+        for(SmartCuts.Span span:kept){
+            MediaItem clip=new MediaItem.Builder().setUri(videoUri)
+                    .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(span.startMs)
+                            .setEndPositionMs(span.endMs)
+                            .build()).build();
+            items.add(new EditedMediaItem.Builder(clip).build());
+        }
+        Composition cutComposition=new Composition.Builder(
+                new EditedMediaItemSequence.Builder(items).build()).build();
+        final List<Caption> remappedCaptions=SmartCuts.mapCaptions(captions,kept);
+        final List<MediaCue> remappedCues=SmartCuts.mapCues(mediaCues,kept);
+        final List<Long> joins=SmartCuts.joinPositions(kept);
+        final long estimatedDuration=SmartCuts.duration(kept);
+        transformer=new Transformer.Builder(context)
+                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                .addListener(new Transformer.Listener(){
+                    @Override public void onCompleted(Composition composition,ExportResult result){
+                        if(cancelled)return;
+                        editingFirstPass=false;
+                        Uri joined=Uri.fromFile(intermediate);
+                        long joinedDuration=durationOf(context,joined,estimatedDuration);
+                        renderFinal(context,joined,musicUri,0,joinedDuration,
+                                remappedCaptions,remappedCues,style,animation,font,size,
+                                position,voiceVolume,musicVolume,musicDelay,ducking,
+                                duckPercent,watermark,watermarkCorner,watermarkSize,
+                                watermarkAlpha,joins,visualFx,listener);
+                    }
+                    @Override public void onError(Composition composition,ExportResult result,
+                                                  ExportException error){
+                        editingFirstPass=false;
+                        removeTemp();
+                        if(!cancelled)listener.error("Erro ao juntar os trechos: "+
+                                safeMessage(error));
+                    }
+                }).build();
+        try {
+            transformer.start(cutComposition,intermediate.getAbsolutePath());
+        }catch(Exception ex){
+            editingFirstPass=false;
+            removeTemp();
+            listener.error("Não foi possível iniciar a montagem dos cortes: "+safeMessage(ex));
+        }
+    }
+
+    private static String safeMessage(Throwable ex){
+        return ex.getMessage()==null?ex.toString():ex.getMessage();
+    }
+
+    private long durationOf(Context context,Uri uri,long fallback){
+        MediaMetadataRetriever retriever=new MediaMetadataRetriever();
+        try{
+            retriever.setDataSource(context,uri);
+            String ms=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            return ms==null?fallback:Math.max(700,Long.parseLong(ms));
+        }catch(Exception ignored){return fallback;}
+        finally{try{retriever.release();}catch(Exception ignored){}}
+    }
+
+    private void renderFinal(Context context,Uri source,Uri musicUri,long startMs,long endMs,
+                             List<Caption> captions,List<MediaCue> mediaCues,
+                             int style,int animation,int font,int size,int position,
+                             int voiceVolume,int musicVolume,long musicDelay,
+                             boolean ducking,int duckPercent,boolean watermark,
+                             int watermarkCorner,int watermarkSize,int watermarkAlpha,
+                             List<Long> joins,int visualFx,Listener listener){
+        if(cancelled)return;
+        MediaItem mainMedia=new MediaItem.Builder().setUri(source)
+                .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
+                        .setStartPositionMs(startMs)
+                        .setEndPositionMs(endMs)
+                        .build()).build();
+        ArrayList<Effect> videoEffects=new ArrayList<>();
+        videoEffects.add(Presentation.createForWidthAndHeight(720,1280,
+                Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
+        List<TextureOverlay> overlays=new ArrayList<>();
+        try{
+            List<MediaCue> pictures=new ArrayList<>();
+            for(MediaCue cue:mediaCues) if(cue.isImage() && cue.endMs>startMs
+                    && cue.startMs<endMs)pictures.add(cue);
+            if(!pictures.isEmpty())overlays.add(new MediaCueOverlay(context,pictures,startMs));
+            if(!captions.isEmpty())overlays.add(new CaptionOverlay(context,
+                    captions,startMs,style,animation,font,size,position));
+            if(watermark)overlays.add(new WatermarkOverlay(context,
+                    watermarkCorner,watermarkSize,watermarkAlpha));
+            if(visualFx>0)overlays.add(new VisualFxOverlay(visualFx,
+                    endMs-startMs,joins));
+        }catch(Exception ex){
+            removeTemp();
+            listener.error("Falha ao preparar os efeitos: "+safeMessage(ex));
+            return;
+        }
+        if(!overlays.isEmpty())videoEffects.add(new OverlayEffect(overlays));
+        List<androidx.media3.common.audio.AudioProcessor> voiceFx=new ArrayList<>();
+        if(voiceVolume!=100)voiceFx.add(new SmartMixAudioProcessor(
+                voiceVolume/100f,voiceVolume/100f,false,0,startMs,null,false));
+        EditedMediaItem main=new EditedMediaItem.Builder(mainMedia)
+                .setEffects(new Effects(voiceFx,videoEffects)).build();
         ArrayList<EditedMediaItemSequence> sequences=new ArrayList<>();
-        sequences.add(main);
-        List<Caption> mapped=SmartCuts.mapCaptions(captions,kept);
-        if(musicUri!=null&&musicVolume>0&&musicDelay<total){
+        sequences.add(new EditedMediaItemSequence.Builder(main).build());
+        if(musicUri!=null && musicVolume>0 && musicDelay<endMs-startMs){
             try{
-                sequences.add(makeMusic(context,musicUri,0,total,musicDelay,
-                        musicVolume,ducking,duckPercent,mapped));
+                sequences.add(makeMusic(context,musicUri,startMs,endMs,musicDelay,
+                        musicVolume,ducking,duckPercent,captions));
             }catch(Exception ex){
-                callback.error("Não foi possível preparar a música: "+ex.getMessage());
+                removeTemp();
+                listener.error("Não foi possível preparar a música: "+safeMessage(ex));
                 return;
             }
         }
         try{
-            List<MediaCue> outputSounds=SmartCuts.mapSoundCues(mediaCues,kept);
-            EditedMediaItemSequence sfx=makeSounds(context,outputSounds,0,total);
-            if(sfx!=null)sequences.add(sfx);
+            EditedMediaItemSequence sounds=makeSounds(context,mediaCues,startMs,endMs);
+            if(sounds!=null)sequences.add(sounds);
         }catch(Exception ex){
-            callback.error("Não foi possível preparar efeitos sonoros: "+ex.getMessage());
+            removeTemp();
+            listener.error("Não foi possível preparar efeitos sonoros: "+safeMessage(ex));
             return;
         }
         Composition composition=new Composition.Builder(sequences).build();
-        transformer = new Transformer.Builder(context)
+        transformer=new Transformer.Builder(context)
                 .setVideoMimeType(MimeTypes.VIDEO_H264)
                 .setAudioMimeType(MimeTypes.AUDIO_AAC)
-                .addListener(new Transformer.Listener() {
-                    @Override public void onCompleted(Composition comp, ExportResult result) {
-                        callback.success(output);
+                .addListener(new Transformer.Listener(){
+                    @Override public void onCompleted(Composition composition,ExportResult result){
+                        if(cancelled)return;
+                        removeTemp();
+                        listener.success(output);
                     }
-                    @Override public void onError(Composition comp, ExportResult result, ExportException exception) {
-                        if (output.exists()) output.delete();
-                        callback.error(exception.getMessage() == null ? exception.toString() : exception.getMessage());
+                    @Override public void onError(Composition composition,ExportResult result,
+                                                  ExportException error){
+                        removeTemp();
+                        if(output!=null&&output.exists())output.delete();
+                        if(!cancelled)listener.error("Falha no render final: "+safeMessage(error));
                     }
                 }).build();
-        transformer.start(composition, output.getAbsolutePath());
+        try{transformer.start(composition,output.getAbsolutePath());}
+        catch(Exception ex){
+            removeTemp();
+            listener.error("Erro ao iniciar render final: "+safeMessage(ex));
+        }
+    }
+
+    private void removeTemp(){
+        if(intermediate!=null&&intermediate.exists())intermediate.delete();
+        intermediate=null;
     }
 
     /**
@@ -212,14 +321,18 @@ public final class VideoExporter {
     }
 
     public int progress() {
-        if (transformer == null) return 0;
-        int status = transformer.getProgress(progressHolder);
-        return status == Transformer.PROGRESS_STATE_AVAILABLE ? progressHolder.progress : -1;
+        if(transformer==null)return 0;
+        int status=transformer.getProgress(progressHolder);
+        if(status!=Transformer.PROGRESS_STATE_AVAILABLE)return -1;
+        return editingFirstPass?Math.min(49,progressHolder.progress/2)
+                : (intermediate!=null?50+progressHolder.progress/2:progressHolder.progress);
     }
 
     public void cancel() {
-        if (transformer != null) transformer.cancel();
-        transformer = null;
-        if (output != null && output.exists()) output.delete();
+        cancelled=true;
+        if(transformer!=null)transformer.cancel();
+        transformer=null;
+        removeTemp();
+        if(output!=null&&output.exists())output.delete();
     }
 }
