@@ -42,69 +42,72 @@ public final class VideoExporter {
                       List<Caption> captions, List<MediaCue> mediaCues, int style, int animation, int font,
                       int size, int position, int voiceVolume, int musicVolume, long musicDelay,
                       boolean ducking, int duckPercent, boolean watermark, int watermarkCorner,
-                      int watermarkSize,int watermarkAlpha, Listener callback) {
+                      int watermarkSize,int watermarkAlpha, List<SmartCuts.Cut> cuts,
+                      int visualFx, Listener callback) {
         output = new File(context.getCacheDir(), "editora_export_" + System.currentTimeMillis() + ".mp4");
         if (output.exists()) output.delete();
 
-        MediaItem.ClippingConfiguration clip = new MediaItem.ClippingConfiguration.Builder()
-                .setStartPositionMs(startMs)
-                .setEndPositionMs(endMs)
-                .build();
-        MediaItem video = new MediaItem.Builder().setUri(videoUri).setClippingConfiguration(clip).build();
-
-        List<Effect> videoEffects = new ArrayList<>();
-        videoEffects.add(Presentation.createForWidthAndHeight(720, 1280,
-                Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
-        List<TextureOverlay> overlays = new ArrayList<>();
-        List<MediaCue> pictures = new ArrayList<>();
-        for (MediaCue cue : mediaCues) if (cue.isImage() && cue.endMs > startMs
-                && cue.startMs < endMs) pictures.add(cue);
-        if (!pictures.isEmpty()) {
-            try {
-                overlays.add(new MediaCueOverlay(context, pictures, startMs));
-            } catch (Exception e) {
-                callback.error("Erro ao abrir imagem de apoio: "+e.getMessage());
-                return;
+        List<SmartCuts.Span> kept=SmartCuts.kept(startMs,endMs,
+                cuts==null?Collections.emptyList():cuts);
+        if(kept.isEmpty()){callback.error("Todos os trechos foram removidos. Revise os cortes.");return;}
+        if(kept.size()>16){callback.error("Há cortes demais (máximo de 15). Desmarque algumas pausas.");return;}
+        long total=SmartCuts.duration(kept);
+        if(total<500){callback.error("O vídeo restante ficou menor que meio segundo.");return;}
+        ArrayList<EditedMediaItem> clips=new ArrayList<>();
+        try{
+            for(int i=0;i<kept.size();i++){
+                SmartCuts.Span span=kept.get(i);
+                MediaItem video=new MediaItem.Builder().setUri(videoUri)
+                        .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(span.startMs)
+                                .setEndPositionMs(span.endMs).build()).build();
+                List<Effect> videoFx=new ArrayList<>();
+                videoFx.add(Presentation.createForWidthAndHeight(720,1280,
+                        Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
+                List<TextureOverlay> overlays=new ArrayList<>();
+                ArrayList<MediaCue> pictures=new ArrayList<>();
+                for(MediaCue cue:mediaCues)if(cue.isImage()
+                        &&cue.endMs>span.startMs&&cue.startMs<span.endMs)pictures.add(cue);
+                if(!pictures.isEmpty())overlays.add(
+                        new MediaCueOverlay(context,pictures,span.startMs));
+                ArrayList<Caption> localCaptions=new ArrayList<>();
+                for(Caption c:captions)if(c.endMs>span.startMs&&c.startMs<span.endMs)
+                    localCaptions.add(c);
+                if(!localCaptions.isEmpty())overlays.add(new CaptionOverlay(context,
+                        localCaptions,span.startMs,style,animation,font,size,position));
+                if(watermark)overlays.add(new WatermarkOverlay(context,
+                        watermarkCorner,watermarkSize,watermarkAlpha));
+                if(visualFx>0)overlays.add(new VisualFxOverlay(visualFx,span.length(),i>0));
+                if(!overlays.isEmpty())videoFx.add(new OverlayEffect(overlays));
+                List<androidx.media3.common.audio.AudioProcessor> voiceFx=new ArrayList<>();
+                if(voiceVolume!=100)voiceFx.add(new SmartMixAudioProcessor(
+                        voiceVolume/100f,voiceVolume/100f,false,0L,span.startMs,null,false));
+                clips.add(new EditedMediaItem.Builder(video)
+                        .setEffects(new Effects(voiceFx,videoFx)).build());
             }
+        }catch(Exception ex){
+            callback.error("Não foi possível preparar os clipes: "+ex.getMessage());
+            return;
         }
-        if (!captions.isEmpty()) {
-            overlays.add(new CaptionOverlay(context, captions, startMs, style,
-                    animation, font, size, position));
-        }
-        if(watermark){
-            try {
-                overlays.add(new WatermarkOverlay(context,watermarkCorner,watermarkSize,watermarkAlpha));
-            }catch(Exception ex){
-                callback.error("Não foi possível preparar marca d'água: "+ex.getMessage());
-                return;
-            }
-        }
-        if (!overlays.isEmpty()) videoEffects.add(new OverlayEffect(overlays));
-        List<androidx.media3.common.audio.AudioProcessor> voiceFx = new ArrayList<>();
-        if(voiceVolume!=100){
-            voiceFx.add(new SmartMixAudioProcessor(voiceVolume/100f,voiceVolume/100f,
-                    false,0L,startMs,null,false));
-        }
-        EditedMediaItem editedVideo = new EditedMediaItem.Builder(video)
-                .setEffects(new Effects(voiceFx, videoEffects)).build();
-        EditedMediaItemSequence main = new EditedMediaItemSequence.Builder(editedVideo).build();
-
+        EditedMediaItemSequence main=new EditedMediaItemSequence.Builder(clips).build();
         ArrayList<EditedMediaItemSequence> sequences=new ArrayList<>();
         sequences.add(main);
-        if(musicUri != null && musicVolume>0 && musicDelay<endMs-startMs){
-            try {
-                sequences.add(makeMusic(context,musicUri,startMs,endMs,musicDelay,
-                        musicVolume,ducking,duckPercent,captions));
+        List<Caption> mapped=SmartCuts.mapCaptions(captions,kept);
+        if(musicUri!=null&&musicVolume>0&&musicDelay<total){
+            try{
+                sequences.add(makeMusic(context,musicUri,0,total,musicDelay,
+                        musicVolume,ducking,duckPercent,mapped));
             }catch(Exception ex){
-                callback.error("Não foi possível preparar a música de fundo: "+ex.getMessage());
+                callback.error("Não foi possível preparar a música: "+ex.getMessage());
                 return;
             }
         }
-        try {
-            EditedMediaItemSequence sfx=makeSounds(context,mediaCues,startMs,endMs);
-            if(sfx!=null) sequences.add(sfx);
+        try{
+            List<MediaCue> outputSounds=SmartCuts.mapSoundCues(mediaCues,kept);
+            EditedMediaItemSequence sfx=makeSounds(context,outputSounds,0,total);
+            if(sfx!=null)sequences.add(sfx);
         }catch(Exception ex){
-            callback.error("Não foi possível preparar os efeitos sonoros: "+ex.getMessage());
+            callback.error("Não foi possível preparar efeitos sonoros: "+ex.getMessage());
             return;
         }
         Composition composition=new Composition.Builder(sequences).build();
